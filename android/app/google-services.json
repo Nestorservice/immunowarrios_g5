@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "283398482642",
+    "project_id": "immunowarriors-groupe05",
+    "storage_bucket": "immunowarriors-groupe05.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:283398482642:android:f328e9fb321c904b6b5b0b",
+        "android_client_info": {
+          "package_name": "com.example.immuno_warriors"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC1vkWBzqlm_2IfQNvQi3jYBvZk8ky-6tE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

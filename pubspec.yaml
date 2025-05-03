@@ -36,7 +36,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   # --- Dépendances pour ImmunoWarriors ---
   firebase_core: ^3.13.0 # Pour initialiser Firebase
-  firebase_auth: ^5.0.0 # Pour l'authentification
+  firebase_auth: ^5.5.3 # Pour l'authentification
   cloud_firestore: ^5.0.0 # Pour la base de données Firestore
   # firebase_messaging: ^14.9.0 # Pour les notifications (on l'ajoutera plus tard si besoin)
 
