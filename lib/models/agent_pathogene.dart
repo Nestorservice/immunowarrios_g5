@@ -1,4 +1,9 @@
 // Indique que c'est une classe abstraite
+import 'package:immuno_warriors/models/virus.dart';
+
+import 'bacterie.dart';
+import 'champignon.dart';
+
 abstract class AgentPathogene {
   // Attributs communs à tous les pathogènes
   final String id; // Un identifiant unique pour chaque instance (utile pour les listes)
@@ -28,23 +33,45 @@ abstract class AgentPathogene {
   });
 
   // Méthodes abstraites qui devront être implémentées par les classes enfants
-  // (On ne les définit pas ici, juste leur "signature")
-  // On ajoutera des méthodes plus tard pour les capacités spéciales
-  // Par exemple :
-  // void capaciteSpeciale();
-
-  // Une méthode pour appliquer des dégâts (sera utilisée en combat)
   void subirDegats(double degatsSubis, String typeAttaque);
-
-  // Une méthode pour simuler une attaque (sera utilisée en combat)
-  // Elle prendrait une cible en paramètre, mais on garde simple pour l'instant
   void attaquer();
 
-  // Méthode pour convertir un objet AgentPathogene en Map (pour le stocker dans Firestore/Hive)
-  // Une méthode abstraite de sérialisation est utile ici
+  // Méthode abstraite pour convertir un objet AgentPathogene en Map (pour le stocker dans Firestore/Hive)
   Map<String, dynamic> toJson();
+
+
+  // **TRÈS IMPORTANT :** CETTE MÉTHODE DOIT ÊTRE ICI, À L'INTÉRIEUR DE LA CLASSE AgentPathogene
+  // Elle est static car elle n'agit pas sur une instance spécifique de AgentPathogene,
+  // mais sur la classe elle-même pour créer une instance à partir d'une Map.
+  static AgentPathogene? fromMap(Map<String, dynamic> map) {
+    // Assure-toi que la map contient le champ 'type' pour savoir quel type de pathogène créer
+    if (!map.containsKey('type')) {
+      print('Erreur de désérialisation : la map ne contient pas le champ "type" pour AgentPathogene.');
+      return null; // Impossible de déterminer le type de pathogène
+    }
+
+    // En fonction du type, appelle la méthode fromJson appropriée de la classe concrète (Virus, Bacterie, Champignon)
+    switch (map['type']) {
+      case 'Virus':
+      // On importe Virus pour pouvoir appeler Virus.fromJson
+      // Assure-toi d'avoir 'import 'virus.dart';' en haut de ce fichier!
+        return Virus.fromJson(map);
+      case 'Bacterie':
+      // On importe Bacterie pour pouvoir appeler Bacterie.fromJson
+      // Assure-toi d'avoir 'import 'bacterie.dart';' en haut de ce fichier!
+        return Bacterie.fromJson(map);
+      case 'Champignon':
+      // On importe Champignon pour pouvoir appeler Champignon.fromJson
+      // Assure-toi d'avoir 'import 'champignon.dart';' en haut de ce fichier!
+        return Champignon.fromJson(map);
+      default:
+        print('Erreur de désérialisation : type de pathogène inconnu : ${map['type']}');
+        return null; // Type inconnu
+    }
+  }
 }
 
-// On va implémenter les méthodes concrètes subirDegats et attaquer
-// dans les classes enfants car elles pourraient varier légèrement par type
-// (par exemple, l'armure pourrait interagir différemment, ou l'attaque pourrait avoir des effets spécifiques)
+// Assure-toi d'avoir les imports des classes concrètes en haut du fichier AgentPathogene.dart
+// import 'virus.dart';
+// import 'bacterie.dart';
+// import 'champignon.dart';

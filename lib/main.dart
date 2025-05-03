@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart'; // <-- Importe Riverpod
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'firebase_options.dart';
-import 'screens/auth_checker.dart'; // <-- On va créer ce fichier bientôt
+import 'screens/auth_checker.dart';
+// Assure-toi d'importer les modèles qui auront des Adapters Hive (pour les types)
+import 'models/ressources_defensives.dart';
+import 'models/laboratoire_recherche.dart';
+import 'models/memoire_immunitaire.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -11,14 +16,31 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // On enveloppe l'application avec ProviderScope pour que Riverpod fonctionne
+  // **AJOUT IMPORTANT :** Initialisation de Hive
+  await Hive.initFlutter();
+
+  // **AJOUT IMPORTANT :** Enregistrer les Adapters pour tes modèles
+  // Ces Adapters sont définis dans les fichiers .g.dart que tu as importés
+  Hive.registerAdapter(RessourcesDefensivesAdapter()); // Le nom de la classe Adapter générée
+  Hive.registerAdapter(LaboratoireRechercheAdapter()); // Le nom de la classe Adapter générée
+  Hive.registerAdapter(MemoireImmunitaireAdapter()); // Le nom de la classe Adapter générée
+  // TODO: Enregistrer les Adapters pour d'autres modèles si tu les stockes dans Hive
+
+  // **AJOUT IMPORTANT :** Ouvrir les boîtes Hive nécessaires
+  // Assure-toi d'utiliser les mêmes noms de boîtes que dans hive_service.dart
+  await Hive.openBox<RessourcesDefensives>('resourcesBox');
+  await Hive.openBox<LaboratoireRecherche>('researchBox');
+  await Hive.openBox<MemoireImmunitaire>('immuneMemoryBox');
+  // TODO: Ouvrir d'autres boîtes si nécessaire
+
   runApp(
-    const ProviderScope( // <-- Ajoute ProviderScope ici
+    const ProviderScope(
       child: MyApp(),
     ),
   );
 }
 
+// ... (Le reste de ta classe MyApp) ...
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -30,8 +52,7 @@ class MyApp extends StatelessWidget {
         primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
-      // On remplace Placeholder par AuthChecker qui gérera la navigation
-      home: const AuthChecker(), // <-- Utilise notre futur AuthChecker
+      home: const AuthChecker(),
     );
   }
 }

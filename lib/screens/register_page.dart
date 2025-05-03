@@ -1,7 +1,7 @@
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // Importe si tu utilises des types de Firebase comme User
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../state/auth_state_provider.dart'; // Importe notre AuthService Provider
+import '../state/auth_state_provider.dart'; // Importe notre AuthService Provider (qui contient maintenant tous les providers)
 
 class RegisterPage extends ConsumerWidget { // Utilise ConsumerWidget
   const RegisterPage({super.key});
@@ -15,7 +15,8 @@ class RegisterPage extends ConsumerWidget { // Utilise ConsumerWidget
     // On obtient l'instance de AuthService via le provider
     final authService = ref.watch(authServiceProvider);
 
-    // Ici aussi, gestion des controllers comme expliqué dans LoginPage
+    // IMPORTANT : Voir la note sur les TextEditingController dans LoginPage.
+
 
     return Scaffold(
       appBar: AppBar(title: const Text('Créer un Cyber-Profil')),
@@ -61,6 +62,7 @@ class RegisterPage extends ConsumerWidget { // Utilise ConsumerWidget
                   final currentUserRef = ref;
 
                   // Appelle la méthode d'enregistrement de notre AuthService
+                  // La méthode signUpWithEmailAndPassword gère déjà l'affichage des erreurs dans la console
                   User? user = await authService.signUpWithEmailAndPassword(email, password);
 
                   // **AJOUT IMPORTANT :** Vérifie si le widget est toujours monté avant de continuer

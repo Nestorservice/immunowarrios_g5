@@ -1,8 +1,8 @@
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // Importe si tu utilises des types de Firebase comme User
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:immuno_warriors/screens/register_page.dart';
-import '../state/auth_state_provider.dart'; // Importe notre AuthService Provider
+import '../state/auth_state_provider.dart'; // Importe notre AuthService Provider (qui contient maintenant tous les providers)
+import 'register_page.dart'; // Assure-toi d'importer la page d'enregistrement
 
 class LoginPage extends ConsumerWidget { // Utilise ConsumerWidget pour accéder au provider AuthService
   const LoginPage({super.key});
@@ -16,12 +16,14 @@ class LoginPage extends ConsumerWidget { // Utilise ConsumerWidget pour accéder
     // On obtient l'instance de AuthService via le provider
     final authService = ref.watch(authServiceProvider);
 
-    // Important: Nettoyer les controllers quand le widget n'est plus utilisé
-    // Bien que ce soit un StatelessWidget, les controllers doivent être disposed
-    // Pour un StatelessWidget, on devrait utiliser un StatefulWidget ou un package comme flutter_hooks
-    // Pour l'exemple simple, on va juste les créer ici. Dans un vrai projet, utiliser StatefulWidget + dispose()
-    // Ou mieux, utiliser un StateNotifierProvider pour gérer l'état du formulaire et des controllers
-    // Mais pour démarrer simple, on fait comme ça.
+    // IMPORTANT : La gestion des TextEditingController dans un StatelessWidget
+    // comme ConsumerWidget est un peu délicate car ils ne sont pas automatiquement "jetés"
+    // quand le widget disparaît. Pour un vrai projet, il faudrait utiliser un StatefulWidget
+    // et appeler .dispose() sur les controllers dans la méthode dispose() du State.
+    // Ou utiliser un package comme flutter_hooks ou faire la gestion d'état du formulaire
+    // avec un StateNotifierProvider dédié. Pour l'instant, on garde cette structure simple
+    // en sachant qu'elle n'est pas idéale pour la gestion de la mémoire à long terme.
+
 
     return Scaffold(
       appBar: AppBar(title: const Text('Connexion Cyber-Immunitaire')),
@@ -95,7 +97,7 @@ class LoginPage extends ConsumerWidget { // Utilise ConsumerWidget pour accéder
                   // Navigue vers la page d'enregistrement
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => const RegisterPage()), // On créera cette page juste après
+                    MaterialPageRoute(builder: (context) => const RegisterPage()),
                   );
                 },
                 child: const Text("Pas encore de compte ? Crée un Cyber-Profil"),

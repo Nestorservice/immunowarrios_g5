@@ -1,31 +1,25 @@
-// On aura besoin de définir ce qu'est une "Recherche" déblocable.
-// Pour l'instant, on peut juste stocker des IDs ou des noms de recherches complétées
-// et les points de recherche actuels du joueur.
+import 'package:hive/hive.dart'; // <-- AJOUTE CET IMPORT
 
+part 'laboratoire_recherche.g.dart';
+
+// **AJOUTE CETTE LIGNE AVANT LA CLASSE**
+@HiveType(typeId: 1) // Utilise le prochain typeId disponible
 class LaboratoireRecherche {
+  // **AJOUTE CETTE LIGNE AVANT CHAQUE ATTRIBUT À STOCKER**
+  @HiveField(0)
   double pointsRecherche;
-  final List<String> recherchesDebloquees; // IDs ou noms des recherches que le joueur possède
+
+  @HiveField(1)
+  final List<String> recherchesDebloquees;
 
   LaboratoireRecherche({
     this.pointsRecherche = 0.0,
     List<String>? recherchesDebloquees,
   }) : recherchesDebloquees = recherchesDebloquees ?? [];
 
-  // Méthode pour ajouter des points de recherche (gagnés en combat, etc.)
-  void ajouterPoints(double montant) {
-    pointsRecherche += montant;
-  }
+  // ... (méthodes existantes) ...
 
-  // Méthode pour lancer/compléter une recherche (à implémenter plus tard)
-  // Elle vérifierait si le joueur a assez de points, retirerait les points, et ajouterait la recherche à la liste.
-  // bool lancerRecherche(String rechercheId, double cout) { ... }
-
-  // Méthode pour vérifier si une recherche est débloquée
-  bool isRechercheDebloquee(String rechercheId) {
-    return recherchesDebloquees.contains(rechercheId);
-  }
-
-  // Méthode pour convertir en Map pour Firestore/Hive
+  // Méthode pour convertir en Map (reste la même)
   Map<String, dynamic> toJson() {
     return {
       'pointsRecherche': pointsRecherche,
@@ -33,7 +27,7 @@ class LaboratoireRecherche {
     };
   }
 
-  // Méthode pour créer un objet à partir d'une Map
+  // Méthode pour créer un objet à partir d'une Map (reste la même)
   static LaboratoireRecherche fromJson(Map<String, dynamic> json) {
     return LaboratoireRecherche(
       pointsRecherche: json['pointsRecherche'].toDouble(),

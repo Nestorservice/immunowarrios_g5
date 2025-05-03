@@ -39,13 +39,11 @@ dependencies:
   firebase_auth: ^5.5.3 # Pour l'authentification
   cloud_firestore: ^5.0.0 # Pour la base de données Firestore
   # firebase_messaging: ^14.9.0 # Pour les notifications (on l'ajoutera plus tard si besoin)
-
   hive: ^2.2.3 # Pour la base de données locale
   hive_flutter: ^1.1.0 # Adaptateur Hive pour Flutter
-
   flutter_riverpod: ^2.5.1 # Pour la gestion d'état Riverpod
-
   dio: ^5.4.3+1 # Pour faire des appels réseau (vers Gemini)
+  uuid: ^4.3.3 # <-- AJOUTE CETTE LIGNE
 
 
 dev_dependencies:
