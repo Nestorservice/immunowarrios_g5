@@ -7,8 +7,8 @@ import '../models/virus.dart';
 import '../state/auth_state_provider.dart'; // Importe TOUS nos providers
 // Importe les pages pour la navigation future
 import 'scanner_page.dart';
-import 'bio_forge_page.dart'; // <-- IMPORT DE LA BIO-FORGE
-// import 'laboratoire_rd_page.dart';
+import 'bio_forge_page.dart';
+import 'laboratoire_rd_page.dart'; // <-- IMPORT DU LABORATOIRE R&D
 // import 'archives_guerre_page.dart';
 
 
@@ -151,20 +151,20 @@ class DashboardPage extends ConsumerWidget {
               },
               child: const Text('Scanner de Menaces'),
             ),
-            // DÉCOMMENTE CE BOUTON POUR LA BIO-FORGE
             ElevatedButton(
               onPressed: () {
-                // Navigue vers la page Bio-Forge
-                Navigator.push(context, MaterialPageRoute(builder: (context) => const BioForgePage())); // <-- NAVIGUE VERS LA BIO-FORGE
+                Navigator.push(context, MaterialPageRoute(builder: (context) => const BioForgePage()));
               },
               child: const Text('Bio-Forge (Gérer ma Base)'),
             ),
-            // ElevatedButton(
-            //   onPressed: () {
-            //      print("TODO: Naviguer vers le Laboratoire R&D");
-            //   },
-            //   child: const Text('Laboratoire R&D'),
-            // ),
+            // DÉCOMMENTE CE BOUTON POUR LE LABORATOIRE R&D
+            ElevatedButton(
+              onPressed: () {
+                // Navigue vers la page Laboratoire R&D
+                Navigator.push(context, MaterialPageRoute(builder: (context) => const LaboratoireRDPage())); // <-- NAVIGUE VERS LE LABORATOIRE R&D
+              },
+              child: const Text('Laboratoire R&D'),
+            ),
             // ElevatedButton(
             //   onPressed: () {
             //      print("TODO: Naviguer vers les Archives de Guerre");

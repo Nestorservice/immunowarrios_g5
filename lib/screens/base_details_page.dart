@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../state/auth_state_provider.dart'; // Importe les providers si besoin
 import '../models/base_virale.dart'; // Importe le modèle BaseVirale
+import 'combat_page.dart'; // <-- AJOUTE CET IMPORT POUR LA PAGE DE COMBAT
 
 // Ce provider va regarder une seule base virale basée sur son ID.
 // On utilise un "Family" provider parce qu'il dépend d'un argument (l'ID de la base).
@@ -71,13 +72,20 @@ class BaseDetailsPage extends ConsumerWidget {
                 const SizedBox(height: 20),
 
                 // TODO: Ajouter un bouton "Lancer le Combat" ici (Étape 9)
-                // ElevatedButton(
-                //   onPressed: () {
-                //     // TODO: Naviguer vers la page de combat en passant l'ID de cette base
-                //     print('TODO: Lancer le combat contre la base ${base.id}');
-                //   },
-                //   child: const Text('Lancer le Combat'),
-                // ),
+                // **AJOUT POUR L'ÉTAPE 13.3 : Bouton Lancer le Combat**
+                ElevatedButton( // <-- DÉCOMMENTE OU AJOUTE CE BOUTON
+                  onPressed: () {
+                    print('TODO: Lancer le combat contre la base ${base.id}');
+                    // Navigue vers la page de combat en passant l'ID de cette base (l'ennemie)
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => CombatPage(enemyBaseId: base.id), // <-- NAVIGUE VERS LA PAGE DE COMBAT
+                      ),
+                    );
+                  },
+                  child: const Text('Lancer le Combat'),
+                ),
               ],
             ),
           );
