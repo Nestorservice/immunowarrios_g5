@@ -1,319 +1,499 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:uuid/uuid.dart'; // Nécessaire pour générer des ID uniques pour les nouveaux pathogènes
+import 'package:uuid/uuid.dart'; // Nécessaire pour générer des ID uniques
+import 'package:google_fonts/google_fonts.dart'; // Importe Google Fonts
+
 import '../models/base_virale.dart';
-// Importe les modèles spécifiques dont on aura besoin pour les types (même si non directement utilisés dans le code, bonne pratique)
+// Importe les modèles spécifiques dont on aura besoin
 import '../models/ressources_defensives.dart';
 import '../models/laboratoire_recherche.dart';
 import '../models/memoire_immunitaire.dart';
 import '../models/agent_pathogene.dart'; // Assure-toi que ce modèle existe
-// Importe les classes spécifiques des pathogènes si tu les utilises directement (comme Virus dans _addPathogen)
+// Importe les classes spécifiques des pathogènes si tu les utilises directement
 import '../models/virus.dart'; // Exemple : si tu ajoutes des Virus
 import '../models/bacterie.dart'; // Exemple : si tu ajoutes des Bactéries
 // import '../models/champignon.dart'; // Exemple : si tu utilises Champignons
 
 import '../state/auth_state_provider.dart'; // Importe tous nos providers
+// Importe FirestoreService
+import '../services/firestore_service.dart';
 
 
 // Un Provider qui regarde la base virale *du joueur actuellement connecté*.
 // Il dépend de authStateChangesProvider (pour l'UID) et utilise streamViralBase.
 // Renvoie un Stream<BaseVirale?>.
 final playerBaseProvider = StreamProvider.autoDispose<BaseVirale?>((ref) {
-  // Regarde l'AsyncValue de l'état d'authentification pour obtenir l'UID
   final authState = ref.watch(authStateChangesProvider);
 
-  // Utilise .when sur l'AsyncValue de l'authentification
   return authState.when(
     data: (user) {
-      // Si l'utilisateur est connecté (User n'est pas null)
       if (user != null) {
         final userId = user.uid;
         final firestoreService = ref.watch(firestoreServiceProvider);
-        // Retourne le stream de la base virale dont l'ID est l'UID de l'utilisateur
-        // streamViralBase(userId) retourne bien un Stream<BaseVirale?>
         return firestoreService.streamViralBase(userId);
       }
-      // Si pas connecté, émet un stream qui contient juste null
       return Stream.value(null);
     },
-    // Pendant le chargement ou en cas d'erreur de l'auth, émet un stream qui contient juste null
     loading: () => Stream.value(null),
     error: (err, stack) => Stream.value(null),
   );
 });
 
+// --- Palette de couleurs thématique "Immuno-Médical" ---
+// Réutilise les couleurs
+const Color hospitalPrimaryGreen = Color(0xFF4CAF50); // Vert Médical
+const Color hospitalAccentPink = Color(0xFFE91E63); // Rose Vif
+const Color hospitalBackgroundColor = Color(0xFFF5F5F5); // Fond clair
+const Color hospitalCardColor = Color(0xFFFFFFFF); // Fond blanc carte
+const Color hospitalTextColor = Color(0xFF212121); // Texte sombre
+const Color hospitalSubTextColor = Color(0xFF757575); // Texte gris
+const Color hospitalWarningColor = Color(0xFFFF9800); // Orange
+const Color hospitalErrorColor = Color(0xFFF44336); // Rouge
 
 class BioForgePage extends ConsumerWidget {
   const BioForgePage({super.key});
 
-  // Fonction pour retirer un pathogène de la base du joueur et sauvegarder
-  // Cette fonction est définie À L'INTÉRIEUR de la classe BioForgePage
-  void _removePathogen(WidgetRef ref, BaseVirale currentBase, String pathogenIdToRemove) async {
-    // Obtenir l'utilisateur connecté pour avoir l'UID (nécessaire pour la sauvegarde et les règles de sécurité)
+  // Fonction pour retirer un pathogène avec messages SnackBar stylisés
+  void _removePathogen(BuildContext context, WidgetRef ref, BaseVirale currentBase, String pathogenIdToRemove) async {
     final currentUser = ref.read(authStateChangesProvider).value;
     if (currentUser == null) {
-      print('Impossible de retirer le pathogène : utilisateur non connecté.');
-      // Optionnel : afficher un message à l'utilisateur
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: const Text('Connectez-vous pour modifier votre base.'), backgroundColor: hospitalErrorColor),
+      );
       return;
     }
     final userId = currentUser.uid;
 
-    // Créer une nouvelle liste de pathogènes sans celui à retirer
-    // Utilise where().toList() pour créer une nouvelle liste immuable
     final updatedPathogensList = currentBase.pathogenes
         .where((pathogene) => pathogene.id != pathogenIdToRemove)
         .toList();
 
-    // Créer un nouvel objet BaseVirale avec la liste de pathogènes mise à jour
-    // C'est important de créer un NOUVEL objet car BaseVirale est final.
     final updatedBase = BaseVirale(
-      id: currentBase.id, // L'ID ne change pas
-      nom: currentBase.nom, // Le nom ne change pas
-      createurId: currentBase.createurId, // Le créateur ne change pas
-      pathogenes: updatedPathogensList, // La nouvelle liste de pathogènes
-      // Copie les autres propriétés si ta classe BaseVirale en a d'autres et qu'elles ne changent pas
+      id: currentBase.id,
+      nom: currentBase.nom,
+      createurId: currentBase.createurId,
+      pathogenes: updatedPathogensList,
     );
 
-    // Obtenir l'instance du service Firestore
     final firestoreService = ref.read(firestoreServiceProvider);
 
-    // Appeler la méthode de sauvegarde
     try {
       await firestoreService.savePlayerBase(userId: userId, base: updatedBase);
-      print('Pathogène $pathogenIdToRemove retiré et base sauvegardée pour $userId.');
-      // Optionnel : afficher un message de succès à l'utilisateur
+      print('Pathogène $pathogenIdToRemove retiré et base sauvegardée.');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: const Text('Pathogène retiré de votre base.'), backgroundColor: hospitalWarningColor), // Utilise warning pour retrait (attention)
+      );
     } catch (e) {
       print('Erreur lors du retrait du pathogène ou de la sauvegarde : $e');
-      // Optionnel : afficher un message d'erreur à l'utilisateur
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur lors du retrait : ${e.toString()}'), backgroundColor: hospitalErrorColor), // Rouge erreur
+      );
     }
   }
 
-
-  // Fonction pour ajouter un pathogène à la base du joueur et sauvegarder
-  // Cette fonction est définie À L'INTÉRIEUR de la classe BioForgePage
-  void _addPathogen(WidgetRef ref, BaseVirale currentBase) async {
-    // Obtenir l'utilisateur connecté pour avoir l'UID
+  // Fonction pour ajouter un pathogène avec messages SnackBar stylisés
+  void _addPathogen(BuildContext context, WidgetRef ref, BaseVirale currentBase) async {
     final currentUser = ref.read(authStateChangesProvider).value;
     if (currentUser == null) {
-      print('Impossible d\'ajouter le pathogène : utilisateur non connecté.');
-      // Optionnel : afficher un message à l'utilisateur
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: const Text('Connectez-vous pour ajouter des pathogènes.'), backgroundColor: hospitalErrorColor),
+      );
       return;
     }
     final userId = currentUser.uid;
 
-    // **Créer un nouveau pathogène exemple (par exemple, un Virus simple)**
-    // Utilise Uuid().v4() pour générer un ID unique pour le nouveau pathogène
-    final newPathogen = Virus( // <-- Choisis le type de pathogène à ajouter ici (Virus, Bacterie, Champignon)
-      id: const Uuid().v4(), // ID unique généré
-      pv: 30.0, // Points de vie initiaux
-      maxPv: 30.0, // Points de vie maximum
-      armure: 3.0,
-      typeAttaque: 'acide', // Exemple de type d'attaque
-      degats: 5.0, // Dégâts de base
-      initiative: 8,
-      faiblesses: {'physique': 1.2, 'chimique': 0.8}, // Exemples de faiblesses
-      // Ajoute d'autres propriétés spécifiques à ce type de pathogène si nécessaire
+    // **Créer un nouveau pathogène exemple (Virus simple)**
+    final newPathogen = Virus(
+      id: const Uuid().v4(),
+      pv: 40.0, // Légèrement amélioré
+      maxPv: 40.0,
+      armure: 4.0,
+      typeAttaque: 'neurotoxique', // Nouveau type
+      degats: 8.0,
+      initiative: 10,
+      faiblesses: {'énergétique': 1.5, 'physique': 0.7},
     );
 
-    // Créer une nouvelle liste de pathogènes en ajoutant le nouveau
-    // Utilise spread operator (...) pour copier les pathogènes existants et ajouter le nouveau
     final updatedPathogensList = [...currentBase.pathogenes, newPathogen];
 
-    // Créer un nouvel objet BaseVirale avec la liste de pathogènes mise à jour
     final updatedBase = BaseVirale(
-      id: currentBase.id, // L'ID ne change pas (c'est l'UID du joueur)
-      nom: currentBase.nom, // Le nom ne change pas
-      createurId: currentBase.createurId, // Le créateur ne change pas
-      pathogenes: updatedPathogensList, // La nouvelle liste de pathogènes
-      // Copie les autres propriétés si ta classe BaseVirale en a d'autres
+      id: currentBase.id,
+      nom: currentBase.nom,
+      createurId: currentBase.createurId,
+      pathogenes: updatedPathogensList,
     );
 
-    // Obtenir l'instance du service Firestore
     final firestoreService = ref.read(firestoreServiceProvider);
 
-    // Appeler la méthode de sauvegarde
     try {
       await firestoreService.savePlayerBase(userId: userId, base: updatedBase);
-      print('Nouveau pathogène ${newPathogen.id} (${newPathogen.type}) ajouté et base sauvegardée pour $userId.');
-      // Optionnel : afficher un message de succès à l'utilisateur
+      print('Nouveau pathogène ${newPathogen.id} (${newPathogen.type}) ajouté.');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Nouveau pathogène "${newPathogen.type}" synthétisé !'), backgroundColor: hospitalPrimaryGreen), // Vert succès
+      );
     } catch (e) {
       print('Erreur lors de l\'ajout du pathogène ou de la sauvegarde : $e');
-      // Optionnel : afficher un message d'erreur à l'utilisateur
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur lors de la synthèse : ${e.toString()}'), backgroundColor: hospitalErrorColor), // Rouge erreur
+      );
     }
   }
 
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Regarde le provider parent (userProfileProvider) pour gérer l'état global du profil
     final userProfileAsyncValue = ref.watch(userProfileProvider);
-
-    // Regarde la base virale du joueur via le playerBaseProvider (retourne un AsyncValue<BaseVirale?>)
     final playerBaseAsyncValue = ref.watch(playerBaseProvider);
 
-
     return Scaffold(
-      appBar: AppBar(title: const Text('Bio-Forge')),
-      // Utilise .when() sur le userProfileAsyncValue pour gérer les états de chargement/erreur globaux du profil
+      // AppBar thématique claire
+      appBar: AppBar(
+        title: Text('Unité de Bio-Synthèse', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold)), // Titre adapté, police propre
+        backgroundColor: hospitalAccentPink, // Rose vif pour cette page
+        elevation: 1.0,
+        centerTitle: true,
+        iconTheme: const IconThemeData(color: Colors.white), // Icônes blanches
+      ),
+      backgroundColor: hospitalBackgroundColor, // Fond clair
       body: userProfileAsyncValue.when(
-        // Quand les données du profil utilisateur sont chargées (profileData est Map<String, dynamic>? ou null)
         data: (profileData) {
-          // Si le profilData est null (ex: pas connecté, ou document non trouvé), affiche un message global
           if (profileData == null) {
-            return const Center(child: Text('Profil utilisateur non disponible. Veuillez vous connecter.'));
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.person_off_outlined, size: 60, color: hospitalSubTextColor),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Profil utilisateur non disponible.\nVeuillez vous connecter pour accéder à la Bio-Forge.',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.roboto(fontSize: 18, color: hospitalSubTextColor),
+                    ),
+                  ],
+                ),
+              ),
+            );
           }
 
-          // Si profileData est disponible, alors les providers dérivés (ressources, recherche, mémoire)
-          // ont été mis à jour avec les données du profil.
-          // Maintenant, on regarde les valeurs fournies par ces providers.
-          // Ces variables contiennent une VALEUR (qui peut être null), PAS un AsyncValue.
+          // Accède aux valeurs des providers dérivés si profileData est non-null
           final RessourcesDefensives? userResources = ref.watch(userResourcesProvider);
           final LaboratoireRecherche? userResearch = ref.watch(userResearchProvider);
           final MemoireImmunitaire? userImmuneMemory = ref.watch(userImmuneMemoryProvider);
 
-
-          // Maintenant que le profil global est chargé, on construit le corps de la page.
           return SingleChildScrollView(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.all(20.0), // Padding général
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch, // Étirer les éléments
               children: [
-                const Text('Votre Centre d\'Opérations', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 20),
+                // --- Titre de la Page ---
+                Text(
+                  'Laboratoire de Culturisme Pathogène', // Nouveau titre style hospitalier/biologique
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.montserrat( // Police percutante
+                    fontSize: 26,
+                    fontWeight: FontWeight.bold,
+                    color: hospitalAccentPink, // Rose vif
+                  ),
+                ),
+                const SizedBox(height: 30),
 
-                // --- Affichage des Ressources ---
-                const Text('Vos Ressources :', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                // Vérifie si userResources est null directement
-                if (userResources != null)
-                  Column(
+                // --- Panneau des Ressources ---
+                _buildInfoPanel( // Widget helper pour les panneaux
+                  title: 'Réserves Biologiques',
+                  icon: Icons.inventory_2_outlined,
+                  iconColor: hospitalPrimaryGreen,
+                  content: userResources != null
+                      ? Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Énergie : ${userResources.energie.toStringAsFixed(1)}'),
-                      Text('Bio-matériaux : ${userResources.bioMateriaux.toStringAsFixed(1)}'),
+                      _buildInfoRow(Icons.bolt, 'Énergie Cellulaire', userResources.energie.toStringAsFixed(1), hospitalAccentPink), // Rose
+                      _buildInfoRow(Icons.science_outlined, 'Bio-matériaux Synthétiques', userResources.bioMateriaux.toStringAsFixed(1), hospitalPrimaryGreen), // Vert
                       // Ajoute d'autres ressources si besoin
                     ],
                   )
-                else
-                  const Text('Ressources non disponibles.'), // Affiche ce message si userResources est null
-
-
+                      : Center(child: Text('Ressources non disponibles.', style: GoogleFonts.roboto(color: hospitalSubTextColor, fontStyle: FontStyle.italic))),
+                ),
                 const SizedBox(height: 20),
 
-                // --- Affichage de la Recherche ---
-                const Text('Votre Laboratoire R&D :', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                // Vérifie si userResearch est null directement
-                if (userResearch != null)
-                  Column(
+                // --- Panneau de la Recherche ---
+                _buildInfoPanel(
+                  title: 'Connaissances Virales',
+                  icon: Icons.menu_book_outlined, // Icône livre/connaissance
+                  iconColor: hospitalWarningColor, // Orange
+                  content: userResearch != null
+                      ? Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Points de Recherche : ${userResearch.pointsRecherche.toStringAsFixed(1)}'),
-                      // **CORRECTION DE TYPO :** Utilise userResearch ici, pas research
-                      Text('Recherches Débloquées : ${userResearch.recherchesDebloquees.join(', ') }'),
-                    ],
-                  )
-                else
-                  const Text('Laboratoire R&D non disponible.'),
-
-                const SizedBox(height: 20),
-
-                // --- Affichage de la Mémoire Immunitaire ---
-                const Text('Votre Mémoire Immunitaire :', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                // Vérifie si userImmuneMemory est null directement
-                if (userImmuneMemory != null)
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Types Pathogènes Connus : ${userImmuneMemory.typesConnus.join(', ') }'),
-                      Text('Bonus d\'Efficacité : ${userImmuneMemory.bonusEfficacite.entries.map((e) => '${e.key}: ${e.value.toStringAsFixed(1)}').join(', ')}'),
-                    ],
-                  )
-                else
-                  const Text('Mémoire Immunitaire non disponible.'),
-
-
-                const SizedBox(height: 20),
-
-                // --- Affichage de Votre Base Virale ---
-                const Text('Votre Base Virale :', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                // Continue d'utiliser .when() pour playerBaseAsyncValue car c'est un StreamProvider (retourne un AsyncValue)
-                playerBaseAsyncValue.when(
-                  data: (playerBase) {
-                    if (playerBase == null) {
-                      // Si la base du joueur n'existe pas (par exemple, pas encore sauvegardée)
-                      return const Text('Aucune base virale personnelle détectée.');
-                      // TODO: Ajouter un bouton pour créer la base si elle n'existe pas ?
-                    }
-                    // Si la base est trouvée, affiche ses détails (principalement les pathogènes)
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Nom de la Base : ${playerBase.nom ?? 'Base sans nom'}'),
-                        const SizedBox(height: 8),
-                        const Text('Pathogènes dans votre base :', style: TextStyle(fontWeight: FontWeight.w500)),
-                        const SizedBox(height: 4),
-
-                        // Affiche la liste des pathogènes dans la base du joueur
-                        if (playerBase.pathogenes.isEmpty)
-                          const Text('Votre base ne contient aucun pathogène pour l\'instant.')
-                        else
-                          ListView.builder(
-                            shrinkWrap: true, // Indispensable dans un Column/SingleChildScrollView
-                            physics: const NeverScrollableScrollPhysics(), // Pour désactiver le scroll de la liste imbriquée
-                            itemCount: playerBase.pathogenes.length,
-                            itemBuilder: (context, index) {
-                              final pathogene = playerBase.pathogenes[index];
-                              // TODO: Améliorer l'affichage des détails du pathogène
-                              return ListTile(
-                                title: Text('Type : ${pathogene.type}'),
-                                subtitle: Text('PV : ${pathogene.pv.toStringAsFixed(1)} / ${pathogene.maxPv.toStringAsFixed(1)}'),
-                                // Ajouter d'autres détails du pathogène si pertinent
-
-                                // Bouton Retirer
-                                trailing: IconButton(
-                                  icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
-                                  tooltip: 'Retirer ce pathogène',
-                                  onPressed: () {
-                                    print('Tentative de retrait du pathogène ${pathogene.id} (${pathogene.type})');
-                                    // Appelle la fonction pour retirer le pathogène
-                                    _removePathogen(ref, playerBase, pathogene.id);
-                                  },
-                                ),
-                              );
-                            },
-                          ),
-
-                        const SizedBox(height: 20),
-
-                        // Bouton Ajouter un Pathogène
-                        ElevatedButton(
-                          onPressed: () {
-                            print('Tentative d\'ajout d\'un pathogène');
-                            // Appelle la fonction pour ajouter le pathogène
-                            _addPathogen(ref, playerBase);
-                          },
-                          child: const Text('Ajouter un Pathogène'),
+                      _buildInfoRow(Icons.analytics_outlined, 'Points d\'Analyse', userResearch.pointsRecherche.toStringAsFixed(1), hospitalAccentPink), // Rose
+                      const SizedBox(height: 10),
+                      Text(
+                        'Protocoles Débloqués :',
+                        style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 16, color: hospitalTextColor),
+                      ),
+                      const SizedBox(height: 4),
+                      if (userResearch.recherchesDebloquees.isEmpty)
+                        Text(
+                          'Aucun protocole actif.',
+                          style: GoogleFonts.roboto(color: hospitalSubTextColor, fontStyle: FontStyle.italic),
                         )
+                      else
+                        ...userResearch.recherchesDebloquees.map((id) =>
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 2.0),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.check_circle_outline, size: 16, color: hospitalPrimaryGreen),
+                                  const SizedBox(width: 6),
+                                  Expanded(child: Text(id, style: GoogleFonts.roboto(fontSize: 15, color: hospitalTextColor), overflow: TextOverflow.ellipsis)), // TODO: Afficher le nom complet si possible
+                                ],
+                              ),
+                            )
+                        ).toList(),
+                    ],
+                  )
+                      : Center(child: Text('Données R&D non disponibles.', style: GoogleFonts.roboto(color: hospitalSubTextColor, fontStyle: FontStyle.italic))),
+                ),
+                const SizedBox(height: 20),
 
-                      ],
-                    );
-                  },
-                  loading: () => const CircularProgressIndicator(),
-                  error: (err, stack) => Text('Erreur de chargement de votre base : $err'),
+                // --- Panneau de la Mémoire Immunitaire ---
+                _buildInfoPanel(
+                  title: 'Banque de Données Immunitaire',
+                  icon: Icons.local_hospital_outlined, // Icône hôpital/santé
+                  iconColor: hospitalPrimaryGreen, // Vert
+                  content: userImmuneMemory != null
+                      ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildInfoRow(Icons.bug_report_outlined, 'Types Connus', userImmuneMemory.typesConnus.join(', '), hospitalAccentPink), // Rose
+                      const SizedBox(height: 10),
+                      Text(
+                        'Bonus d\'Efficacité :',
+                        style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 16, color: hospitalTextColor),
+                      ),
+                      const SizedBox(height: 4),
+                      if (userImmuneMemory.bonusEfficacite.isEmpty)
+                        Text(
+                          'Aucun bonus actif.',
+                          style: GoogleFonts.roboto(color: hospitalSubTextColor, fontStyle: FontStyle.italic),
+                        )
+                      else
+                        ...userImmuneMemory.bonusEfficacite.entries.map((e) =>
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 2.0),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.star_rate_outlined, size: 16, color: hospitalWarningColor), // Icône étoile/bonus
+                                  const SizedBox(width: 6),
+                                  Expanded(child: Text('${e.key}: ${e.value.toStringAsFixed(1)}', style: GoogleFonts.roboto(fontSize: 15, color: hospitalTextColor), overflow: TextOverflow.ellipsis)),
+                                ],
+                              ),
+                            )
+                        ).toList(),
+                    ],
+                  )
+                      : Center(child: Text('Mémoire Immunitaire non disponible.', style: GoogleFonts.roboto(color: hospitalSubTextColor, fontStyle: FontStyle.italic))),
+                ),
+                const SizedBox(height: 20),
+
+
+                // --- Panneau de Votre Base Virale ---
+                _buildInfoPanel(
+                  title: 'Collecte Pathogène',
+                  icon: Icons.folder_special_outlined, // Icône dossier spécial
+                  iconColor: hospitalAccentPink, // Rose vif
+                  content: playerBaseAsyncValue.when(
+                    data: (playerBase) {
+                      if (playerBase == null) {
+                        return Center(child: Text('Aucune base personnelle détectée.', style: GoogleFonts.roboto(color: hospitalSubTextColor, fontStyle: FontStyle.italic)));
+                        // TODO: Ajouter un bouton stylisé pour créer la base
+                      }
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Nom de la Base : ${playerBase.nom ?? 'Base sans nom'}', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: hospitalTextColor)),
+                          const SizedBox(height: 8),
+                          const Divider(color: hospitalSubTextColor, height: 15, thickness: 0.3), // Séparateur
+                          Text('Pathogènes en culture :', style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 16, color: hospitalTextColor)),
+                          const SizedBox(height: 8),
+
+                          if (playerBase.pathogenes.isEmpty)
+                            Center(child: Text('Votre base ne contient aucun pathogène.', style: GoogleFonts.roboto(color: hospitalSubTextColor, fontStyle: FontStyle.italic)))
+                          else
+                            ListView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: playerBase.pathogenes.length,
+                              itemBuilder: (context, index) {
+                                final pathogene = playerBase.pathogenes[index];
+                                // Widget helper pour chaque élément de pathogène
+                                return _buildPathogenTile(context, ref, playerBase, pathogene);
+                              },
+                            ),
+
+                          const SizedBox(height: 20),
+
+                          // Bouton Ajouter un Pathogène (Stylisé)
+                          Center( // Centre le bouton
+                            child: ElevatedButton.icon( // Bouton avec icône
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: hospitalPrimaryGreen, // Fond vert
+                                foregroundColor: Colors.white, // Texte blanc
+                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
+                                elevation: 3.0,
+                              ),
+                              onPressed: () {
+                                print('Tentative d\'ajout d\'un pathogène');
+                                // Appelle la fonction pour ajouter le pathogène
+                                _addPathogen(context, ref, playerBase); // Passer le contexte
+                              },
+                              icon: const Icon(Icons.add_circle_outline), // Icône d'ajout
+                              label: Text('Synthétiser Pathogène', style: GoogleFonts.roboto(fontSize: 16, fontWeight: FontWeight.bold)), // Texte adapté
+                            ),
+                          )
+
+                        ],
+                      );
+                    },
+                    loading: () => Center(child: CircularProgressIndicator(color: hospitalAccentPink)), // Indicateur rose
+                    error: (err, stack) => Center(child: Text('Erreur de chargement de votre base : ${err.toString()}', style: GoogleFonts.roboto(color: hospitalErrorColor))), // Texte erreur rouge
+                  ),
                 ),
 
 
                 const SizedBox(height: 20),
 
-                // TODO: Ajouter d'autres sections de la Bio-Forge si besoin (ex: Inventaire de pathogènes non utilisés)
+                // TODO: Ajouter d'autres sections de la Bio-Forge
 
               ],
             ),
           );
         },
         // Gère l'état de chargement global du profil
-        loading: () => const Center(child: CircularProgressIndicator(key: ValueKey('profileLoading'))),
+        loading: () => Center(child: CircularProgressIndicator(color: hospitalPrimaryGreen, key: const ValueKey('profileLoading'))), // Indicateur vert
         // Gère l'état d'erreur global du profil
-        error: (err, stack) => Center(child: Text('Erreur lors du chargement du profil utilisateur : $err')),
+        error: (err, stack) => Center(child: Text('Erreur de chargement du profil : ${err.toString()}', style: GoogleFonts.roboto(color: hospitalErrorColor))), // Texte erreur rouge
+      ),
+    );
+  }
+
+  // --- Widgets helper pour le design (adaptés au thème hospitalier) ---
+
+  // Widget générique pour les panneaux d'information (Ressources, Recherche, Mémoire)
+  Widget _buildInfoPanel({required String title, required IconData icon, required Color iconColor, required Widget content}) {
+    return Card(
+      color: hospitalCardColor, // Fond blanc
+      elevation: 2.0, // Légère ombre
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)), // Coins légèrement arrondis
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 28, color: iconColor), // Icône du panneau
+                const SizedBox(width: 10),
+                Expanded( // Permet au texte de prendre l'espace restant
+                  child: Text(
+                    title, // Titre du panneau
+                    style: GoogleFonts.poppins(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: hospitalTextColor, // Texte sombre
+                    ),
+                    overflow: TextOverflow.ellipsis, // Gère le débordement
+                  ),
+                ),
+              ],
+            ),
+            const Divider(color: hospitalSubTextColor, height: 25, thickness: 0.5), // Ligne de séparation
+            content, // Le contenu spécifique du panneau
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Widget helper pour une ligne d'information dans un panneau (avec icône, label, valeur)
+  Widget _buildInfoRow(IconData icon, String label, String value, Color iconColor) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 20, color: iconColor), // Icône de l'item
+          const SizedBox(width: 8),
+          Expanded( // Permet au label de prendre l'espace
+            flex: 2, // Le label prend un peu plus de place
+            child: Text(
+              '$label :', // Label
+              style: GoogleFonts.roboto(fontSize: 16, color: hospitalSubTextColor), // Police standard, gris moyen
+            ),
+          ),
+          Expanded( // Permet à la valeur de prendre l'espace restant
+            flex: 3, // La valeur prend le reste
+            child: Text(
+              value, // Valeur
+              style: GoogleFonts.montserrat(fontSize: 16, fontWeight: FontWeight.w500, color: hospitalTextColor), // Police pour les valeurs, texte sombre
+              textAlign: TextAlign.right, // Aligne la valeur à droite
+              overflow: TextOverflow.ellipsis, // Gère le débordement
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Widget pour une tuile individuelle de pathogène dans la liste
+  Widget _buildPathogenTile(BuildContext context, WidgetRef ref, BaseVirale currentBase, AgentPathogene pathogene) {
+    return Card( // Utilise une carte intérieure pour chaque pathogène
+      color: hospitalBackgroundColor, // Fond très clair pour la tuile du pathogène
+      elevation: 1.0, // Très légère ombre
+      margin: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 8.0), // Petite marge
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6.0)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+        child: Row(
+          children: [
+            // Icône du pathogène (peut-être basée sur le type plus tard)
+            Icon(Icons.bug_report_outlined, size: 28, color: hospitalAccentPink.withOpacity(0.8)), // Icône bug, couleur rose semi-opaque
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Type et PV
+                  Text(
+                    '${pathogene.type} - PV: ${pathogene.pv.toStringAsFixed(1)} / ${pathogene.maxPv.toStringAsFixed(1)}',
+                    style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: hospitalTextColor),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  // Armure et Dégâts (exemple d'autres stats)
+                  Text(
+                    'Armure: ${pathogene.armure.toStringAsFixed(1)} - Dégâts: ${pathogene.degats.toStringAsFixed(1)}',
+                    style: GoogleFonts.roboto(fontSize: 14, color: hospitalSubTextColor),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  // TODO: Afficher d'autres stats pertinentes
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            // Bouton Retirer
+            IconButton(
+              icon: const Icon(Icons.delete_outline, color: hospitalErrorColor), // Icône corbeille, rouge
+              tooltip: 'Retirer ce pathogène',
+              onPressed: () {
+                print('Tentative de retrait du pathogène ${pathogene.id}');
+                _removePathogen(context, ref, currentBase, pathogene.id); // Passe le contexte et ref
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
