@@ -1,23 +1,19 @@
+// lib/screens/laboratoire_rd_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-// Importe Google Fonts
 import 'package:google_fonts/google_fonts.dart';
 
 import '../state/auth_state_provider.dart';
-// Assure-toi que ce modèle est importé et que LaboratoireRecherche y est défini
-import '../models/laboratoire_recherche.dart'; // <-- IMPORTANT
-// Importe FirestoreService
+import '../models/laboratoire_recherche.dart';
 import '../services/firestore_service.dart';
 
 
-// Définition simple d'une recherche (inchangé)
+// Définition simple d'une recherche
 class ResearchOption {
   final String id; // Identifiant unique
   final String name;
   final String description;
   final double cost; // Coût en points de recherche
-  // TODO: Ajouter d'autres propriétés comme les pré-requis, les effets (plus tard)
 
   const ResearchOption({
     required this.id,
@@ -27,7 +23,7 @@ class ResearchOption {
   });
 }
 
-// Liste de toutes les recherches disponibles dans le jeu (inchangé)
+// Liste de toutes les recherches disponibles dans le jeu
 const List<ResearchOption> availableResearchOptions = [
   ResearchOption(
     id: 'viral_upgrade_1',
@@ -56,30 +52,27 @@ const List<ResearchOption> availableResearchOptions = [
   // Ajoute d'autres recherches ici
 ];
 
-// --- Palette de couleurs thématique "Immuno-Médical" (clair, propre) ---
-// Réutilise les couleurs définies pour le tableau de bord
-const Color hospitalPrimaryGreen = Color(0xFF4CAF50); // Vert Médical (Principal, Thème)
-const Color hospitalAccentPink = Color(0xFFE91E63); // Rose Vif (Accent, Attention)
-const Color hospitalBackgroundColor = Color(0xFFF5F5F5); // Fond clair principal (Gris très clair)
-const Color hospitalCardColor = Color(0xFFFFFFFF); // Fond blanc pour les panneaux / cartes (Propre)
-const Color hospitalTextColor = Color(0xFF212121); // Texte sombre sur fond clair (Lecture facile)
-const Color hospitalSubTextColor = Color(0xFF757575); // Texte moins important / labels (Gris moyen)
-const Color hospitalWarningColor = Color(0xFFFF9800); // Orange (Avertissement, R&D)
-const Color hospitalErrorColor = Color(0xFFF44336); // Rouge Vif (Erreur, Déconnexion)
-// Pour la cohérence, utilisons la même couleur pour le succès que le vert primaire ou un vert distinct si vous préférez.
-// Conservons le vert primaire pour les actions/messages de succès.
-const Color hospitalSuccessColor = hospitalPrimaryGreen; // Vert pour les messages de succès
+// --- Palette de couleurs thématique "Immuno-Médical" ---
+const Color hospitalPrimaryGreen = Color(0xFF4CAF50);
+const Color hospitalAccentPink = Color(0xFFE91E63);
+const Color hospitalBackgroundColor = Color(0xFFF5F5F5);
+const Color hospitalCardColor = Color(0xFFFFFFFF);
+const Color hospitalTextColor = Color(0xFF212121);
+const Color hospitalSubTextColor = Color(0xFF757575);
+const Color hospitalWarningColor = Color(0xFFFF9800);
+const Color hospitalErrorColor = Color(0xFFF44336);
+const Color hospitalSuccessColor = hospitalPrimaryGreen;
 
 
 class LaboratoireRDPage extends ConsumerWidget {
   const LaboratoireRDPage({super.key});
 
-  // Fonction pour débloquer une recherche (utilise les couleurs de la nouvelle palette)
+  // Fonction pour débloquer une recherche
   void _unlockResearch(BuildContext context, WidgetRef ref, LaboratoireRecherche currentResearch, ResearchOption researchToUnlock) async {
     final currentUser = ref.read(authStateChangesProvider).value;
     if (currentUser == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: const Text('Connectez-vous pour débloquer des recherches.'), backgroundColor: hospitalErrorColor), // Rouge erreur
+        SnackBar(content: const Text('Connectez-vous pour débloquer des recherches.'), backgroundColor: hospitalErrorColor),
       );
       return;
     }
@@ -87,141 +80,123 @@ class LaboratoireRDPage extends ConsumerWidget {
 
     if (currentResearch.recherchesDebloquees.contains(researchToUnlock.id)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: const Text('Cette recherche est déjà débloquée.'), backgroundColor: hospitalWarningColor), // Orange avertissement
+        SnackBar(content: const Text('Cette recherche est déjà débloquée.'), backgroundColor: hospitalWarningColor),
       );
       return;
     }
 
     if (currentResearch.pointsRecherche < researchToUnlock.cost) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Points de recherche insuffisants. Coût : ${researchToUnlock.cost.toStringAsFixed(1)}.'), backgroundColor: hospitalWarningColor), // Orange avertissement
+        SnackBar(content: Text('Points de recherche insuffisants. Coût : ${researchToUnlock.cost.toStringAsFixed(1)}.'), backgroundColor: hospitalWarningColor),
       );
       return;
     }
 
-    final double updatedPoints = currentResearch.pointsRecherche - researchToUnlock.cost;
-    final List<String> updatedResearchesDebloquees = List.from(currentResearch.recherchesDebloquees)..add(researchToUnlock.id);
+    // Utilisation de copyWith pour créer un nouvel objet LaboratoireRecherche
+    final updatedResearch = currentResearch.copyWith(
+      pointsRecherche: currentResearch.pointsRecherche - researchToUnlock.cost,
+      recherchesDebloquees: List.from(currentResearch.recherchesDebloquees)..add(researchToUnlock.id),
+    );
 
-    final updatedResearchMap = LaboratoireRecherche(
-      pointsRecherche: updatedPoints,
-      recherchesDebloquees: updatedResearchesDebloquees,
-    ).toJson();
-
-    // Assurez-vous que firestoreServiceProvider est accessible via ref
     final firestoreService = ref.read(firestoreServiceProvider);
 
     try {
-      await firestoreService.updateUserProfile(userId, {'research': updatedResearchMap});
+      // Sauvegarde l'objet mis à jour dans Firestore
+      await firestoreService.updateUserProfile(userId, {'research': updatedResearch.toJson()});
       print('Recherche "${researchToUnlock.name}" débloquée pour $userId.');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Recherche "${researchToUnlock.name}" débloquée !'), backgroundColor: hospitalSuccessColor), // Vert succès
+        SnackBar(content: Text('Recherche "${researchToUnlock.name}" débloquée !'), backgroundColor: hospitalSuccessColor),
       );
     } catch (e) {
       print('Erreur lors du déblocage de la recherche ou de la sauvegarde : $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur lors du déblocage de la recherche : ${e.toString()}'), backgroundColor: hospitalErrorColor), // Rouge erreur
+        SnackBar(content: Text('Erreur lors du déblocage de la recherche : ${e.toString()}'), backgroundColor: hospitalErrorColor),
       );
     }
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // userResearch est lu ici, dépendant de userProfileProvider dans le hook useDocument
+    // Écoute les données de recherche de l'utilisateur (peut être null)
     final LaboratoireRecherche? userResearch = ref.watch(userResearchProvider);
-    // On continue de regarder userProfileProvider pour gérer les états de chargement/erreur globaux
-    final userProfileAsyncValue = ref.watch(userProfileProvider);
 
     return Scaffold(
-      // AppBar thématique claire et propre
       appBar: AppBar(
         title: Text(
-          'Laboratoire de Recherche', // Titre adapté
-          style: GoogleFonts.poppins( // Police propre pour le titre
-            color: hospitalTextColor, // Texte sombre
+          'Laboratoire de Recherche',
+          style: GoogleFonts.poppins(
+            color: hospitalTextColor,
             fontWeight: FontWeight.bold,
           ),
         ),
-        backgroundColor: hospitalBackgroundColor, // Fond clair de l'AppBar
-        elevation: 1.0, // Légère ombre
+        backgroundColor: hospitalBackgroundColor,
+        elevation: 1.0,
         centerTitle: true,
       ),
-      // Corps avec fond clair
       body: Container(
-        color: hospitalBackgroundColor, // Fond très clair pour le corps
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20.0), // Padding général
+        color: hospitalBackgroundColor,
+        child: userResearch == null // Vérifie si userResearch est null
+            ? Center( // Affiche un indicateur de chargement ou un message d'attente
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch, // Étirer
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // --- Titre de la Page ---
+              CircularProgressIndicator(color: hospitalPrimaryGreen), // Utilise une couleur cohérente
+              const SizedBox(height: 16),
               Text(
-                'Centre d\'Analyse Biologique', // Nouveau titre style hospitalier
+                'Préparation du laboratoire...',
+                style: GoogleFonts.roboto(color: hospitalSubTextColor, fontStyle: FontStyle.italic),
+              ),
+            ],
+          ),
+        )
+            : SingleChildScrollView( // Si userResearch n'est pas null, affiche le contenu complet
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Centre d\'Analyse Biologique',
                 textAlign: TextAlign.center,
-                style: GoogleFonts.montserrat( // Police plus percutante pour le titre principal
+                style: GoogleFonts.montserrat(
                   fontSize: 26,
                   fontWeight: FontWeight.bold,
-                  color: hospitalPrimaryGreen, // Couleur verte thématique
+                  color: hospitalPrimaryGreen,
                 ),
               ),
-              const SizedBox(height: 30), // Espace
-
-              // --- Panneau de Progression R&D (Statistiques de Recherche) ---
-              _buildResearchProgressPanel(userResearch, userProfileAsyncValue),
-
-              const SizedBox(height: 40), // Espace avant les recherches disponibles
-
-              // --- Titre de la section Recherches Disponibles ---
+              const SizedBox(height: 30),
+              // Panneau d'affichage des points de recherche et des protocoles actifs
+              _buildResearchProgressPanel(userResearch), // userResearch est non-null ici
+              const SizedBox(height: 40),
               Text(
-                'Protocoles de Recherche Disponibles', // Titre de section
-                style: GoogleFonts.poppins( // Police propre
+                'Protocoles de Recherche Disponibles',
+                style: GoogleFonts.poppins(
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
-                  color: hospitalAccentPink, // Rose vif pour cette section (innovation)
+                  color: hospitalAccentPink,
                 ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 20), // Espace
+              const SizedBox(height: 20),
+              // Liste des recherches disponibles que l'utilisateur peut débloquer
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: availableResearchOptions.length,
+                itemBuilder: (context, index) {
+                  final researchOption = availableResearchOptions[index];
+                  final bool isUnlocked = userResearch.recherchesDebloquees.contains(researchOption.id);
+                  final bool canAfford = userResearch.pointsRecherche >= researchOption.cost;
 
-              // --- Liste des Recherches Disponibles ---
-              userProfileAsyncValue.when( // Utilise le when de l'asyncValue global
-                data: (profileData) {
-                  if (userResearch == null) {
-                    // Affiche un indicateur ou un message en attendant les données R&D
-                    return Center(child: Column(
-                      children: [
-                        CircularProgressIndicator(color: hospitalAccentPink),
-                        const SizedBox(height: 16),
-                        Text('Chargement des protocoles...', style: GoogleFonts.roboto(color: hospitalSubTextColor, fontStyle: FontStyle.italic)),
-                      ],
-                    ));
-                  }
-                  return ListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: availableResearchOptions.length,
-                    itemBuilder: (context, index) {
-                      final research = availableResearchOptions[index];
-                      final bool isUnlocked = userResearch.recherchesDebloquees.contains(research.id);
-                      final bool canAfford = userResearch.pointsRecherche >= research.cost;
-
-                      // Widget helper pour chaque élément de recherche
-                      return _buildResearchOptionTile(
-                        context,
-                        ref,
-                        userResearch,
-                        research,
-                        isUnlocked,
-                        canAfford,
-                      );
-                    },
+                  return _buildResearchOptionTile(
+                    context,
+                    ref,
+                    userResearch, // userResearch est non-null ici
+                    researchOption,
+                    isUnlocked,
+                    canAfford,
                   );
                 },
-                // Gestion des états de chargement/erreur du profil global
-                loading: () => Center(child: CircularProgressIndicator(color: hospitalPrimaryGreen)), // Vert pour chargement global
-                error: (err, stack) => Center(child: Text('Erreur de chargement : ${err.toString()}', style: TextStyle(color: hospitalErrorColor))), // Rouge erreur globale
               ),
-
-              // TODO: Ajouter d'autres sections du Laboratoire R&D
             ],
           ),
         ),
@@ -229,96 +204,81 @@ class LaboratoireRDPage extends ConsumerWidget {
     );
   }
 
-  // --- Widgets helper pour le design (adaptés au thème hospitalier) ---
-
   // Panneau de Progression R&D (Statistiques de Recherche)
-  Widget _buildResearchProgressPanel(LaboratoireRecherche? userResearch, AsyncValue<Object?> userProfileAsyncValue) {
+  // Reçoit maintenant un LaboratoireRecherche non-nullable
+  Widget _buildResearchProgressPanel(LaboratoireRecherche userResearch) {
     return Card(
-      color: hospitalCardColor, // Fond blanc propre
-      elevation: 2.0, // Légère ombre
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)), // Coins légèrement arrondis
+      color: hospitalCardColor,
+      elevation: 2.0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
       child: Padding(
-        padding: const EdgeInsets.all(20.0), // Padding intérieur
+        padding: const EdgeInsets.all(20.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Statistiques de Recherche', // Titre du panneau adapté
-              style: GoogleFonts.poppins( // Police et couleur pour le titre
+              'Statistiques de Recherche',
+              style: GoogleFonts.poppins(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: hospitalPrimaryGreen, // Vert
+                color: hospitalPrimaryGreen,
               ),
             ),
-            const Divider(color: hospitalSubTextColor, height: 25, thickness: 0.5), // Ligne de séparation
-
-            userProfileAsyncValue.when( // Utilise le when ici aussi pour être sûr de l'état
-              data: (profileData) {
-                if (userResearch == null) {
-                  return Center(child: Text('Données de recherche non disponibles.', style: GoogleFonts.roboto(color: hospitalSubTextColor, fontStyle: FontStyle.italic)));
-                }
-                // Si userResearch est disponible, affiche les détails
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            const Divider(color: hospitalSubTextColor, height: 25, thickness: 0.5),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Affichage Points de Recherche
+                Row(
                   children: [
-                    // Affichage Points de Recherche
-                    Row(
-                      children: [
-                        Icon(Icons.analytics_outlined, size: 28, color: hospitalAccentPink), // Icône adaptée (analyse/stats)
-                        const SizedBox(width: 10),
-                        Text(
-                          'Points d\'Analyse : ', // Label adapté
-                          style: GoogleFonts.roboto(fontSize: 18, color: hospitalSubTextColor), // Police et couleur
-                        ),
-                        Text(
-                          userResearch.pointsRecherche.toStringAsFixed(1), // Valeur
-                          style: GoogleFonts.montserrat(fontSize: 18, fontWeight: FontWeight.bold, color: hospitalTextColor), // Police et couleur
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 15), // Espace
-
-                    // Liste des Recherches Débloquées
+                    Icon(Icons.analytics_outlined, size: 28, color: hospitalAccentPink),
+                    const SizedBox(width: 10),
                     Text(
-                      'Protocoles Actifs :', // Titre de la sous-section adapté
-                      style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 18, color: hospitalTextColor), // Police et couleur
+                      'Points d\'Analyse : ',
+                      style: GoogleFonts.roboto(fontSize: 18, color: hospitalSubTextColor),
                     ),
-                    const SizedBox(height: 8),
-                    if (userResearch.recherchesDebloquees.isEmpty)
-                      Text(
-                        'Aucun protocole actif pour l\'instant.', // Texte adapté
-                        style: GoogleFonts.roboto(color: hospitalSubTextColor, fontStyle: FontStyle.italic), // Police et couleur
-                      )
-                    else
-                    // Liste stylisée des recherches débloquées
-                      ...userResearch.recherchesDebloquees.map((rechercheId) {
-                        final researchOption = availableResearchOptions.firstWhere(
-                              (opt) => opt.id == rechercheId,
-                          orElse: () => ResearchOption(id: rechercheId, name: 'Protocole Inconnu', description: '', cost: 0), // Fallback
-                        );
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 8.0),
-                          child: Row(
-                            children: [
-                              Icon(Icons.verified_user_outlined, size: 18, color: hospitalPrimaryGreen), // Icône vérifié/actif
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  researchOption.name, // Nom ou fallback
-                                  style: GoogleFonts.roboto(fontSize: 16, color: hospitalTextColor), // Police et couleur
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      }).toList(),
+                    Text(
+                      userResearch.pointsRecherche.toStringAsFixed(1),
+                      style: GoogleFonts.montserrat(fontSize: 18, fontWeight: FontWeight.bold, color: hospitalTextColor),
+                    ),
                   ],
-                );
-              },
-              // Gestion des états globaux
-              loading: () => Center(child: CircularProgressIndicator(color: hospitalPrimaryGreen)), // Vert pour chargement
-              error: (err, stack) => Center(child: Text('Erreur de chargement R&D : ${err.toString()}', style: TextStyle(color: hospitalErrorColor))), // Rouge erreur
+                ),
+                const SizedBox(height: 15),
+                // Liste des Recherches Débloquées
+                Text(
+                  'Protocoles Actifs :',
+                  style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 18, color: hospitalTextColor),
+                ),
+                const SizedBox(height: 8),
+                if (userResearch.recherchesDebloquees.isEmpty)
+                  Text(
+                    'Aucun protocole actif pour l\'instant.',
+                    style: GoogleFonts.roboto(color: hospitalSubTextColor, fontStyle: FontStyle.italic),
+                  )
+                else
+                  ...userResearch.recherchesDebloquees.map((rechercheId) {
+                    final researchOption = availableResearchOptions.firstWhere(
+                          (opt) => opt.id == rechercheId,
+                      orElse: () => ResearchOption(id: rechercheId, name: 'Protocole Inconnu', description: '', cost: 0),
+                    );
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 8.0),
+                      child: Row(
+                        children: [
+                          Icon(Icons.verified_user_outlined, size: 18, color: hospitalPrimaryGreen),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              researchOption.name,
+                              style: GoogleFonts.roboto(fontSize: 16, color: hospitalTextColor),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+              ],
             ),
           ],
         ),
@@ -335,25 +295,20 @@ class LaboratoireRDPage extends ConsumerWidget {
       bool isUnlocked,
       bool canAfford,
       ) {
-    // Détermine la couleur de fond de la carte et l'élévation selon l'état
-    Color tileColor = hospitalCardColor; // Blanc par défaut
-    double tileElevation = 2.0; // Légère ombre
-    Color textColorForTile = hospitalTextColor; // Texte sombre par défaut
-    Color iconColorForTile = hospitalPrimaryGreen; // Vert par défaut pour les icônes de cette section
+    Color tileColor = hospitalCardColor;
+    double tileElevation = 2.0;
+    Color textColorForTile = hospitalTextColor;
 
     if (isUnlocked) {
-      tileColor = hospitalPrimaryGreen.withOpacity(0.1); // Vert très pâle si débloqué
+      tileColor = hospitalPrimaryGreen.withOpacity(0.1);
       tileElevation = 1.0;
-      textColorForTile = hospitalPrimaryGreen; // Texte vert si débloqué
+      textColorForTile = hospitalPrimaryGreen;
     } else if (canAfford) {
-      tileElevation = 4.0; // Plus d'ombre si abordable (met en valeur)
-      iconColorForTile = hospitalAccentPink; // Icône rose vif si abordable
+      tileElevation = 4.0;
     } else {
-      tileColor = hospitalBackgroundColor; // Gris très clair si inabordable (grisé)
-      textColorForTile = hospitalSubTextColor; // Texte gris si inabordable
-      iconColorForTile = hospitalSubTextColor.withOpacity(0.5); // Icône grisée
+      tileColor = hospitalBackgroundColor;
+      textColorForTile = hospitalSubTextColor;
     }
-
 
     return Card(
       color: tileColor,
@@ -368,29 +323,29 @@ class LaboratoireRDPage extends ConsumerWidget {
             // Titre de la recherche
             Text(
               research.name,
-              style: GoogleFonts.poppins( // Police propre
+              style: GoogleFonts.poppins(
                 fontWeight: FontWeight.bold,
                 fontSize: 18,
-                color: textColorForTile, // Couleur basée sur l'état
+                color: textColorForTile,
               ),
             ),
             const SizedBox(height: 8),
             // Description
             Text(
               research.description,
-              style: GoogleFonts.roboto(fontSize: 15, color: hospitalSubTextColor), // Police standard, gris moyen
+              style: GoogleFonts.roboto(fontSize: 15, color: hospitalSubTextColor),
             ),
             const SizedBox(height: 12),
             // Coût
             Row(
               children: [
-                Icon(Icons.monetization_on_outlined, size: 20, color: hospitalWarningColor), // Icône coût orange
+                Icon(Icons.monetization_on_outlined, size: 20, color: hospitalWarningColor),
                 const SizedBox(width: 8),
                 Text(
-                  'Coût : ${research.cost.toStringAsFixed(1)} Points d\'Analyse', // Label adapté
-                  style: GoogleFonts.roboto( // Police standard
+                  'Coût : ${research.cost.toStringAsFixed(1)} Points d\'Analyse',
+                  style: GoogleFonts.roboto(
                     fontSize: 15,
-                    color: canAfford ? hospitalPrimaryGreen : hospitalErrorColor, // Vert si abordable, rouge sinon
+                    color: canAfford ? hospitalPrimaryGreen : hospitalErrorColor,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -403,31 +358,30 @@ class LaboratoireRDPage extends ConsumerWidget {
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: isUnlocked
-                    ? hospitalSubTextColor.withOpacity(0.1) // Très légèrement teinté si débloqué
-                    : (canAfford ? hospitalPrimaryGreen // Vert si abordable
-                    : hospitalBackgroundColor), // Gris très clair si inabordable
+                    ? hospitalSubTextColor.withOpacity(0.1)
+                    : (canAfford ? hospitalPrimaryGreen
+                    : hospitalBackgroundColor),
                 foregroundColor: isUnlocked
-                    ? hospitalSubTextColor // Texte gris si débloqué
-                    : (canAfford ? Colors.white // Texte blanc sur bouton vert
-                    : hospitalSubTextColor), // Texte gris si inabordable
+                    ? hospitalSubTextColor
+                    : (canAfford ? Colors.white
+                    : hospitalSubTextColor),
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8.0),
-                    side: isUnlocked ? BorderSide.none : (canAfford ? BorderSide.none : BorderSide(color: hospitalSubTextColor.withOpacity(0.3), width: 1.0)) // Bordure si inabordable
+                    side: isUnlocked ? BorderSide.none : (canAfford ? BorderSide.none : BorderSide(color: hospitalSubTextColor.withOpacity(0.3), width: 1.0))
                 ),
-                elevation: isUnlocked ? 0 : (canAfford ? 4.0 : 0), // Moins d'ombre si débloqué ou inabordable
+                elevation: isUnlocked ? 0 : (canAfford ? 4.0 : 0),
               ),
-              // Le bouton est actif seulement si PAS débloqué ET peut payer
               onPressed: isUnlocked ? null : (canAfford ? () {
                 print('Tentative de débloquer : ${research.name}');
-                _unlockResearch(context, ref, userResearch!, research); // Ajouté '!' car on vérifie si userResearch est null avant d'afficher la liste
-              } : null), // Désactive si déjà débloqué ou ne peut pas payer
+                _unlockResearch(context, ref, userResearch, research);
+              } : null),
 
               child: Text(
-                isUnlocked ? 'Protocole Actif' // Texte si débloqué
-                    : (canAfford ? 'Démarrer Analyse' // Texte si abordable
-                    : 'Points Insuffisants'), // Texte si inabordable
-                style: GoogleFonts.roboto(fontSize: 16, fontWeight: FontWeight.bold), // Police standard et gras
+                isUnlocked ? 'Protocole Actif'
+                    : (canAfford ? 'Démarrer Analyse'
+                    : 'Points Insuffisants'),
+                style: GoogleFonts.roboto(fontSize: 16, fontWeight: FontWeight.bold),
               ),
             ),
           ],

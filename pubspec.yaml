@@ -44,8 +44,12 @@ dependencies:
   flutter_riverpod: ^2.5.1 # Pour la gestion d'état Riverpod
   dio: ^5.4.3+1 # Pour faire des appels réseau (vers Gemini)
   uuid: ^4.3.3 # <-- AJOUTE CETTE LIGNE
-  google_fonts: ^6.0.0 # ou la dernière version
-
+  #google_fonts: ^6.0.0 # ou la dernière version
+  intl: ^0.18.1
+  google_generative_ai: ^0.2.0
+  flutter_dotenv: ^5.1.0 #Pour lire les variables depuis le fichier .env
+  google_fonts: ^6.2.1 # Utilisez la dernière version stable si différente
+  animated_widgets: ^1.1.0 # Utilisez la dernière version stable si différente
 
 dev_dependencies:
   flutter_test:
@@ -73,6 +77,11 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+  assets:
+    - .env # <<< AJOUTEZ CETTE LIGNE (avec le tiret et l'indentation correcte)
+    - assets/images/splash_background.png
+    - assets/images/logo1.png
+    - assets/images/logo2.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:

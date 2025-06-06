@@ -193,7 +193,20 @@ final userImmuneMemoryProvider = Provider.autoDispose<MemoireImmunitaire?>((ref)
 // Ce provider renvoie un Stream<List<BaseVirale>>.
 final allViralBasesProvider = StreamProvider.autoDispose<List<BaseVirale>>((ref) {
   final firestoreService = ref.watch(firestoreServiceProvider); // Obtient FirestoreService
-  return firestoreService.streamAllViralBases(); // Retourne le Stream réel depuis le service Firestore
+  final authState = ref.watch(authStateChangesProvider); // Regarde l'état d'authentification
+
+  // Attend que l'utilisateur soit authentifié pour récupérer son UID
+  return authState.when(
+    data: (user) {
+      if (user != null) {
+        // CORRECTION ICI : Appelle streamAllOtherViralBases avec l'UID de l'utilisateur
+        return firestoreService.streamAllOtherViralBases(user.uid);
+      }
+      return Stream.value([]); // Si pas d'utilisateur connecté, retourne un stream vide
+    },
+    loading: () => Stream.value([]), // Pendant le chargement, retourne un stream vide
+    error: (err, stack) => Stream.error(err), // En cas d'erreur, propage l'erreur
+  );
 });
 
 // Note sur .autoDispose : c'est une bonne pratique pour les providers qui ne sont pas toujours nécessaires.

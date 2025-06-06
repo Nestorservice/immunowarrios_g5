@@ -1,218 +1,344 @@
+// lib/screens/login_page.dart
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:animated_widgets/animated_widgets.dart';
 import '../state/auth_state_provider.dart';
 import 'register_page.dart';
+import 'dashboard_page.dart'; // Importez votre DashboardPage ici
 
-// --- Réutilise la même palette de couleurs pour la cohérence ---
-const Color primaryColor = Color(0xFF4CAF50); // Vert immunitaire
-const Color accentColor = Color(0xFF2196F3); // Bleu technologique
-const Color cardColor = Color(0xFFFFFFFF); // Fond blanc pour la carte du formulaire
-const Color textColor = Color(0xFF333333); // Texte sombre
-const Color subTextColor = Color(0xFF555555); // Texte moins important
-const Color errorColor = Colors.redAccent; // Couleur pour les messages d'erreur
+// --- Nouvelle Palette de couleurs "Cyber-Tech" (Vert, Bleu Ciel, Jaune Or, Blanc) ---
+const Color cyberGreen = Color(0xFF00FF00); // Vert Néon
+const Color cyberBlue = Color(0xFF00BFFF); // Bleu Ciel Profond / Azur
+const Color cyberGold = Color(0xFFFFD700); // Jaune Or
+const Color cyberWhite = Color(0xFFF0F0F0); // Blanc cassé
+const Color cyberBlack = Color(0xFF121212); // Noir très foncé
+const Color cyberGrey = Color(0xFF333333); // Gris foncé
+const double borderRadius = 18.0;
 
-class LoginPage extends ConsumerWidget {
+class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // On crée des TextEditingController pour récupérer le texte des champs
-    // REMARQUE : Comme mentionné dans ton code original, pour une gestion propre
-    // de la mémoire, il faudrait utiliser un StatefulWidget ou un package comme flutter_hooks.
-    // Pour les besoins du style ici, on garde la structure simple.
-    final TextEditingController emailController = TextEditingController();
-    final TextEditingController passwordController = TextEditingController();
+  ConsumerState<LoginPage> createState() => _LoginPageState();
+}
 
-    // On obtient l'instance de AuthService via le provider
+class _LoginPageState extends ConsumerState<LoginPage> with TickerProviderStateMixin {
+  final TextEditingController emailController = TextEditingController();
+  final TextEditingController passwordController = TextEditingController();
+  late AnimationController _fadeController;
+  late Animation<double> _fadeAnimation;
+  late AnimationController _slideController;
+  late Animation<Offset> _slideAnimation;
+  late AnimationController _glowController;
+  late Animation<Color?> _glowAnimation;
+
+  bool _obscurePassword = true;
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _fadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    );
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _fadeController, curve: Curves.easeIn),
+    );
+
+    _slideController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    );
+    _slideAnimation = Tween<Offset>(begin: const Offset(0, 0.5), end: Offset.zero).animate(
+      CurvedAnimation(parent: _slideController, curve: Curves.easeOutCubic),
+    );
+
+    _glowController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+      reverseDuration: const Duration(seconds: 2),
+    )..repeat(reverse: true);
+    _glowAnimation = ColorTween(begin: cyberBlue.withOpacity(0.2), end: cyberBlue.withOpacity(0.6)).animate(_glowController);
+
+
+    _fadeController.forward();
+    _slideController.forward();
+  }
+
+  @override
+  void dispose() {
+    emailController.dispose();
+    passwordController.dispose();
+    _fadeController.dispose();
+    _slideController.dispose();
+    _glowController.dispose();
+    super.dispose();
+  }
+
+  void _showSnackBar(String message, {bool isError = false}) {
+    if (!mounted) return; // S'assurer que le widget est monté avant d'afficher le SnackBar
+    ScaffoldMessenger.of(context).hideCurrentSnackBar(); // Cache le snackbar précédent
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.redAccent : cyberGreen,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final authService = ref.watch(authServiceProvider);
-
-    // IMPORTANT: Pense à disposer des controllers quand le widget n'est plus utilisé
-    // dans un vrai projet (typiquement dans dispose() d'un StatefulWidget).
+    final screenWidth = MediaQuery.of(context).size.width;
 
     return Scaffold(
-      // Amélioration de l'AppBar
-      appBar: AppBar(
-        title: const Text('Connexion Sécurisée', style: TextStyle(color: Colors.white)), // Titre blanc
-        backgroundColor: primaryColor, // Couleur de fond verte
-        elevation: 4.0, // Ombre légère
-        centerTitle: true, // Centrer le titre
-      ),
-      body: Container(
-        // Optionnel : Ajouter un dégradé ou une image de fond subtile au body
-        // decoration: BoxDecoration(
-        //   gradient: LinearGradient(
-        //     begin: Alignment.topCenter,
-        //     end: Alignment.bottomCenter,
-        //     colors: [Colors.lightGreen[100]!, Colors.lightBlue[100]!], // Exemple de dégradé doux
-        //   ),
-        // ),
-        child: Center(
-          child: SingleChildScrollView(
-            // Ajout de padding autour du contenu scrollable
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch, // Étirer les éléments
-              children: [
-                // --- Titre de la Page ---
-                Text(
-                  'Accès Cyber-Immunitaire',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 28, // Plus grande taille
-                    fontWeight: FontWeight.bold,
-                    color: textColor,
-                    // Utiliser GoogleFonts si importé: GoogleFonts.orbitron(fontSize: 28, fontWeight: FontWeight.bold)
+      backgroundColor: cyberBlack,
+      body: Stack(
+        children: [
+          // Effet de fond animé (gradient ou particules)
+          AnimatedBuilder(
+            animation: _glowController,
+            builder: (context, child) {
+              return Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      cyberGrey.withOpacity(0.4),
+                      cyberBlack,
+                      cyberGrey.withOpacity(0.4),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    stops: [
+                      _glowController.value * 0.7,
+                      0.5,
+                      1.0 - _glowController.value * 0.7,
+                    ],
                   ),
                 ),
-                const SizedBox(height: 30),
-
-                // --- Formulaire dans un Card ---
-                Card(
-                  elevation: 8.0, // Ombre plus prononcée pour le formulaire
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)), // Coins arrondis
-                  child: Padding(
-                    padding: const EdgeInsets.all(20.0), // Padding à l'intérieur de la carte
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // Champ pour l'email (Stylisé)
-                        TextField(
-                          controller: emailController,
-                          decoration: InputDecoration(
-                            labelText: 'Email Cyber-Profil',
-                            labelStyle: TextStyle(color: subTextColor),
-                            prefixIcon: Icon(Icons.email_outlined, color: accentColor), // Icône email
-                            border: OutlineInputBorder( // Bordure stylisée
-                              borderRadius: BorderRadius.circular(8.0),
-                              borderSide: BorderSide(color: accentColor, width: 1.5),
-                            ),
-                            focusedBorder: OutlineInputBorder( // Bordure quand le champ est focus
-                              borderRadius: BorderRadius.circular(8.0),
-                              borderSide: BorderSide(color: primaryColor, width: 2.0),
-                            ),
-                            enabledBorder: OutlineInputBorder( // Bordure quand le champ n'est pas focus
-                              borderRadius: BorderRadius.circular(8.0),
-                              borderSide: BorderSide(color: accentColor.withOpacity(0.5), width: 1.0),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(vertical: 15.0, horizontal: 10.0),
-                          ),
-                          keyboardType: TextInputType.emailAddress,
-                          style: TextStyle(color: textColor), // Couleur du texte entré
-                          cursorColor: primaryColor, // Couleur du curseur
+              );
+            },
+          ),
+          Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(30.0),
+              child: FadeTransition(
+                opacity: _fadeAnimation,
+                child: SlideTransition(
+                  position: _slideAnimation,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: <Widget>[
+                      Hero(
+                        tag: 'authLogo',
+                        child: Image.asset(
+                          'assets/images/logo1.png', // Assurez-vous que ce chemin est correct
+                          height: 140,
+                          fit: BoxFit.contain,
                         ),
-                        const SizedBox(height: 20), // Plus d'espace entre les champs
-
-                        // Champ pour le mot de passe (Stylisé)
-                        TextField(
-                          controller: passwordController,
-                          decoration: InputDecoration(
-                            labelText: 'Mot de Passe d\'Accès',
-                            labelStyle: TextStyle(color: subTextColor),
-                            prefixIcon: Icon(Icons.lock_outline, color: accentColor), // Icône cadenas
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8.0),
-                              borderSide: BorderSide(color: accentColor, width: 1.5),
+                      ),
+                      const SizedBox(height: 25),
+                      Text(
+                        'Accès Sécurisé au Réseau Immuno-Cyber',
+                        style: GoogleFonts.poppins(
+                          fontSize: 26,
+                          fontWeight: FontWeight.bold,
+                          color: cyberGreen,
+                          shadows: [
+                            Shadow(
+                              color: cyberGreen.withOpacity(0.6),
+                              blurRadius: 15,
                             ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8.0),
-                              borderSide: BorderSide(color: primaryColor, width: 2.0),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8.0),
-                              borderSide: BorderSide(color: accentColor.withOpacity(0.5), width: 1.0),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(vertical: 15.0, horizontal: 10.0),
-                          ),
-                          obscureText: true,
-                          style: TextStyle(color: textColor),
-                          cursorColor: primaryColor,
+                          ],
                         ),
-                        const SizedBox(height: 30), // Plus d'espace avant les boutons
-
-                        // Bouton de Connexion (Stylisé)
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: primaryColor, // Couleur de fond verte
-                            foregroundColor: Colors.white, // Texte blanc
-                            padding: const EdgeInsets.symmetric(vertical: 15.0), // Padding vertical
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)), // Coins arrondis
-                            elevation: 5.0, // Ombre
-                          ),
-                          onPressed: () async {
-                            final email = emailController.text.trim();
-                            final password = passwordController.text.trim();
-
-                            if (email.isEmpty || password.isEmpty) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: const Text('Veuillez remplir tous les champs.'),
-                                  backgroundColor: errorColor, // Fond rouge pour erreur
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 15),
+                      Text(
+                        'Entrez vos crédentiels pour une défense optimale.',
+                        style: GoogleFonts.openSans(
+                          fontSize: 16,
+                          color: cyberWhite.withOpacity(0.8),
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 40),
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(borderRadius),
+                          border: Border.all(color: _glowAnimation.value ?? cyberGrey.withOpacity(0.5), width: 1.5),
+                          boxShadow: [
+                            BoxShadow(
+                              color: _glowAnimation.value?.withOpacity(0.2) ?? Colors.transparent,
+                              blurRadius: 20,
+                              spreadRadius: 5,
+                            ),
+                          ],
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 25),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            TextField(
+                              controller: emailController,
+                              keyboardType: TextInputType.emailAddress,
+                              style: GoogleFonts.roboto(color: cyberWhite, fontSize: 16),
+                              decoration: InputDecoration(
+                                hintText: 'Adresse e-mail',
+                                hintStyle: GoogleFonts.roboto(color: cyberWhite.withOpacity(0.5)),
+                                prefixIcon: Icon(Icons.person_outline, color: cyberBlue),
+                                filled: true,
+                                fillColor: Colors.white.withOpacity(0.05),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide.none,
                                 ),
-                              );
-                              return;
-                            }
-
-                            final currentContext = context;
-                            final currentUserRef = ref;
-
-                            // Afficher un indicateur de chargement si souhaité (optionnel)
-                            // showDialog(...); // Ouvre une boîte de dialogue de chargement
-
-                            User? user = await authService.signInWithEmailAndPassword(email, password);
-
-                            // Fermer l'indicateur de chargement si utilisé
-                            // Navigator.of(currentContext).pop();
-
-                            if (!currentUserRef.context.mounted) {
-                              return;
-                            }
-
-                            if (user == null) {
-                              ScaffoldMessenger.of(currentContext).showSnackBar(
-                                SnackBar(
-                                  content: const Text('Échec de la connexion. Vérifie email et mot de passe.'),
-                                  backgroundColor: errorColor, // Fond rouge pour erreur
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide(color: cyberGold, width: 2),
                                 ),
-                              );
-                            }
-                            // La navigation réussie est gérée par AuthChecker.
-                          },
-                          child: const Text(
-                            'Accéder à la Cyber-Défense',
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold), // Texte plus grand et gras
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                            TextField(
+                              controller: passwordController,
+                              obscureText: _obscurePassword,
+                              style: GoogleFonts.roboto(color: cyberWhite, fontSize: 16),
+                              decoration: InputDecoration(
+                                hintText: 'Mot de passe',
+                                hintStyle: GoogleFonts.roboto(color: cyberWhite.withOpacity(0.5)),
+                                prefixIcon: Icon(Icons.lock_outline, color: cyberBlue),
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                                    color: cyberWhite.withOpacity(0.7),
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      _obscurePassword = !_obscurePassword;
+                                    });
+                                  },
+                                ),
+                                filled: true,
+                                fillColor: Colors.white.withOpacity(0.05),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide.none,
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide(color: cyberGold, width: 2),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 30),
+                            SizedBox(
+                              width: screenWidth * 0.75,
+                              height: 55,
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: cyberGreen,
+                                  foregroundColor: cyberBlack,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(borderRadius),
+                                  ),
+                                  elevation: 8.0,
+                                  shadowColor: cyberGreen.withOpacity(0.6),
+                                ),
+                                onPressed: _isLoading ? null : () async {
+                                  setState(() {
+                                    _isLoading = true;
+                                  });
+                                  try {
+                                    User? user = await authService.signInWithEmailAndPassword(
+                                      emailController.text.trim(), // Trim pour éviter les espaces
+                                      passwordController.text.trim(),
+                                    );
+                                    if (!mounted) return; // Vérification du montage après l'appel async
+
+                                    if (user != null) {
+                                      _showSnackBar('Connexion réussie ! Bienvenue, Agent.', isError: false);
+                                      // Naviguer vers le tableau de bord après un court délai pour que le snackbar soit visible
+                                      Future.delayed(const Duration(seconds: 1), () {
+                                        if (mounted) {
+                                          Navigator.pushReplacement(
+                                            context,
+                                            MaterialPageRoute(builder: (context) => const DashboardPage()),
+                                          );
+                                        }
+                                      });
+                                    } else {
+                                      // Ce cas est généralement géré par FirebaseAuthException, mais c'est une sécurité
+                                      _showSnackBar('Échec de la connexion. Veuillez vérifier vos identifiants.', isError: true);
+                                    }
+                                  } on FirebaseAuthException catch (e) {
+                                    if (!mounted) return;
+                                    String message = 'Une erreur est survenue lors de la connexion.';
+                                    if (e.code == 'user-not-found' || e.code == 'wrong-password') {
+                                      message = 'Crédentiels incorrects. Veuillez vérifier votre e-mail et mot de passe.';
+                                    } else if (e.code == 'invalid-email') {
+                                      message = 'L\'adresse e-mail n\'est pas valide.';
+                                    } else if (e.code == 'network-request-failed') {
+                                      message = 'Problème de connexion réseau. Veuillez vérifier votre internet.';
+                                    } else {
+                                      message = 'Erreur Firebase: ${e.message}';
+                                    }
+                                    _showSnackBar(message, isError: true);
+                                  } catch (e) {
+                                    if (!mounted) return;
+                                    _showSnackBar('Erreur inattendue: ${e.toString()}', isError: true);
+                                  } finally {
+                                    if (mounted) { // Assurez-vous que le widget est toujours monté avant de changer l'état
+                                      setState(() {
+                                        _isLoading = false;
+                                      });
+                                    }
+                                  }
+                                },
+                                child: _isLoading
+                                    ? const CircularProgressIndicator(color: cyberBlack)
+                                    : Text(
+                                  'Accéder au Système',
+                                  style: GoogleFonts.poppins(fontSize: 19, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 25),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const RegisterPage()),
+                          );
+                        },
+                        child: Text(
+                          'Nouvel Agent ? S\'enregistrer ici',
+                          style: GoogleFonts.roboto(
+                            color: cyberBlue,
+                            fontSize: 16,
+                            decoration: TextDecoration.underline,
+                            decorationColor: cyberBlue,
                           ),
                         ),
-                        const SizedBox(height: 15), // Espace entre les boutons
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
-
-                const SizedBox(height: 20), // Espace après la carte
-
-                // Bouton pour aller vers la page d'enregistrement (Stylisé)
-                TextButton(
-                  style: TextButton.styleFrom(
-                    foregroundColor: accentColor, // Couleur bleue pour le texte
-                    padding: const EdgeInsets.symmetric(vertical: 12.0),
-                  ),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const RegisterPage()),
-                    );
-                  },
-                  child: const Text(
-                    "Pas encore de compte ? Crée un Cyber-Profil",
-                    style: TextStyle(fontSize: 16),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }

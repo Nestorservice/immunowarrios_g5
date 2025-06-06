@@ -1,44 +1,42 @@
+// lib/screens/combat_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart'; // Importe Google Fonts
+import 'package:google_fonts/google_fonts.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // Importe Timestamp
 
 // Importe les providers nécessaires
-import '../state/auth_state_provider.dart'; // userProfileProvider (dont dépend playerBaseProvider)
-import '../models/base_virale.dart'; // Importe le modèle BaseVirale
-// baseDetailsProvider.family est défini dans base_details_page.dart, donc on l'importe pour l'utiliser.
-import 'base_details_page.dart'; // Nécessaire pour baseDetailsProvider
-// Importe le service de combat que tu viens de créer
+import '../state/auth_state_provider.dart';
+import '../models/base_virale.dart';
 import '../services/combat_service.dart';
-// Importe playerBaseProvider depuis bio_forge_page (si défini là-bas) ou un fichier partagé
-// Assurez-vous que playerBaseProvider est bien accessible, soit en l'important
-// depuis un fichier commun, soit en le redéfinissant si c'est la structure de votre projet.
-// Pour cet exemple, je vais supposer qu'il est défini dans un fichier partagé ou bio_forge_page
-// et que l'import ci-dessous fonctionne si playerBaseProvider est public.
-// Si playerBaseProvider n'est pas public dans bio_forge_page.dart, vous devriez le définir dans auth_state_provider.dart ou un fichier partagé.
-// Pour l'instant, je vais le redéfinir ici temporairement si l'import échoue.
+import '../services/firestore_service.dart'; // <<< NOUVEL IMPORT : Pour sauvegarder dans Firestore
+import '../models/combat_result.dart'; // <<< NOUVEL IMPORT : Ton modèle CombatResult
+
+// baseDetailsProvider.family est défini dans base_details_page.dart, donc on l'importe pour l'utiliser.
+import 'base_details_page.dart';
+import 'combat_visualization_page.dart'; // Pour importer CombatStep
 
 // --- Palette de couleurs thématique "Immuno-Médical" ---
-// Réutilise les couleurs
-const Color hospitalPrimaryGreen = Color(0xFF4CAF50); // Vert Médical
-const Color hospitalAccentPink = Color(0xFFE91E63); // Rose Vif
-const Color hospitalBackgroundColor = Color(0xFFF5F5F5); // Fond clair
-const Color hospitalCardColor = Color(0xFFFFFFFF); // Fond blanc carte
-const Color hospitalTextColor = Color(0xFF212121); // Texte sombre
-const Color hospitalSubTextColor = Color(0xFF757570); // Texte gris
-const Color hospitalWarningColor = Color(0xFFFF9800); // Orange
-const Color hospitalErrorColor = Color(0xFFF44336); // Rouge
+const Color hospitalPrimaryGreen = Color(0xFF4CAF50);
+const Color hospitalAccentPink = Color(0xFFE91E63);
+const Color hospitalBackgroundColor = Color(0xFFF5F5F5);
+const Color hospitalCardColor = Color(0xFFFFFFFF);
+const Color hospitalTextColor = Color(0xFF212121);
+const Color hospitalSubTextColor = Color(0xFF757570);
+const Color hospitalWarningColor = Color(0xFFFF9800);
+const Color hospitalErrorColor = Color(0xFFF44336);
 
 // --- Redéfinition locale de playerBaseProvider si non accessible depuis un import ---
 // Idéalement, ce provider devrait être défini dans auth_state_provider.dart ou un fichier dédié aux providers.
 // Si l'import 'bio_forge_page.dart' pour playerBaseProvider ne fonctionne pas ou si vous voulez
 // que ce provider soit disponible globalement pour toutes les pages qui en ont besoin,
 // déplacez cette définition vers auth_state_provider.dart et assurez-vous d'importer firestoreServiceProvider là-bas.
+// Pour l'instant, je vais le redéfinir ici temporairement si l'import échoue.
 final playerBaseProvider = StreamProvider.autoDispose<BaseVirale?>((ref) {
   final authState = ref.watch(authStateChangesProvider);
   return authState.when(
     data: (user) {
       if (user != null) {
-        final firestoreService = ref.watch(firestoreServiceProvider); // Assurez-vous que firestoreServiceProvider est accessible
+        final firestoreService = ref.watch(firestoreServiceProvider);
         return firestoreService.streamViralBase(user.uid);
       }
       return Stream.value(null);
@@ -50,10 +48,7 @@ final playerBaseProvider = StreamProvider.autoDispose<BaseVirale?>((ref) {
 // --- Fin de la redéfinition locale ---
 
 
-// Cette page affiche les informations des deux bases pour le combat et gère la simulation.
-// On utilise un ConsumerStatefulWidget pour gérer l'état du résultat de la simulation ET utiliser ref.
 class CombatPage extends ConsumerStatefulWidget {
-  // La page a besoin de l'ID de la base ennemie
   final String enemyBaseId;
 
   const CombatPage({super.key, required this.enemyBaseId});
@@ -62,33 +57,89 @@ class CombatPage extends ConsumerStatefulWidget {
   _CombatPageState createState() => _CombatPageState();
 }
 
-// La classe d'état pour la page de combat.
 class _CombatPageState extends ConsumerState<CombatPage> {
+  // Ici, on stocke le résultat de la simulation dans une variable locale
+  // pour l'afficher sur la page après le combat.
+  CombatResult? _simulationDisplayResult; // Renommé pour éviter la confusion avec le modèle
 
-  CombatResult? _combatResult; // Variable d'état pour le résultat
-
-  // Méthode pour lancer la simulation de combat.
+  // Méthode pour lancer la simulation de combat ET sauvegarder le résultat.
   void _runSimulation({
     required BaseVirale playerBase,
     required BaseVirale enemyBase,
-  }) {
-    // Crée une instance du service
+  }) async {
     final combatService = CombatService();
+    final firestoreService = ref.read(firestoreServiceProvider);
+    final currentUser = ref.read(authStateChangesProvider).value;
 
-    // Lance la simulation
-    final result = combatService.simulateCombat(
+    if (currentUser == null) {
+      print('Erreur: Aucun utilisateur connecté pour lancer le combat.');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Veuillez vous connecter pour simuler un combat.')),
+      );
+      return;
+    }
+
+    print('Lancement de la simulation...');
+    List<String> combatLog = [];
+    CombatStep? finalStep;
+
+    // S'abonne au stream de CombatStep pour récupérer le log complet et le résultat final
+    await for (var step in combatService.simulateCombatAsStream(
       playerBase: playerBase,
       enemyBase: enemyBase,
+    )) {
+      if (step.lastActionDescription != null) {
+        combatLog.add(step.lastActionDescription!);
+      }
+      if (step.winner != null) {
+        finalStep = step; // Capture la dernière étape qui contient le vainqueur
+        break; // Le combat est terminé, on peut sortir de la boucle
+      }
+    }
+
+    if (finalStep == null) {
+      // Cela ne devrait normalement pas arriver si simulateCombatAsStream garantit un vainqueur ou une fin
+      print('Erreur: La simulation n\'a pas retourné de résultat final.');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Erreur lors de la simulation du combat.')),
+      );
+      return;
+    }
+
+    // 2. Créer un objet CombatResult COMPLET pour l'enregistrement Firestore
+    final combatResultToSave = CombatResult(
+      attackerId: currentUser.uid,
+      defenderId: enemyBase.id,
+      defenderBaseName: enemyBase.nom,
+      combatDate: Timestamp.now(), // Date actuelle du combat
+      attackerWon: finalStep.winner == 'player', // true si le joueur a gagné
+      playerPathogensRemaining: finalStep.playerTeamState.where((p) => p.pv > 0).length,
+      enemyPathogensRemaining: finalStep.enemyTeamState.where((p) => p.pv > 0).length,
+      combatLog: combatLog, // Utilise le log accumulé
+      winner: finalStep.winner!, // Le gagnant tel que retourné par le simulateur
     );
+
+    // 3. Sauvegarder le résultat dans Firestore
+    try {
+      await firestoreService.saveCombatResult(combatResult: combatResultToSave);
+      print('Résultat du combat sauvegardé avec succès dans Firestore !');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Combat simulé et enregistré !')),
+      );
+    } catch (e) {
+      print('Erreur lors de la sauvegarde du résultat du combat: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur lors de la sauvegarde du combat: $e')),
+      );
+    }
 
     // Met à jour l'état et reconstruit le widget pour afficher le résultat
     setState(() {
-      _combatResult = result;
+      _simulationDisplayResult = combatResultToSave; // Affiche le CombatResult complet
     });
 
-    // Optionnel : imprimer le log complet dans la console pour débogage.
     print('\n--- Log Complet du Combat ---');
-    for (var logEntry in result.combatLog) {
+    for (var logEntry in combatLog) {
       print(logEntry);
     }
     print('---------------------------\n');
@@ -97,26 +148,19 @@ class _CombatPageState extends ConsumerState<CombatPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Regarde la base du joueur
     final playerBaseAsyncValue = ref.watch(playerBaseProvider);
-
-    // Regarde la base ennemie en utilisant l'ID passé au widget
     final enemyBaseAsyncValue = ref.watch(baseDetailsProvider(widget.enemyBaseId));
 
-
-    // On utilise des .when() imbriqués pour gérer l'état des deux AsyncValue
     return Scaffold(
-      // AppBar stylisée
       appBar: AppBar(
-        title: Text('Simulation de Conflit', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold)), // Titre adapté, police propre
-        backgroundColor: hospitalPrimaryGreen, // Fond vert
+        title: Text('Simulation de Conflit', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold)),
+        backgroundColor: hospitalPrimaryGreen,
         elevation: 1.0,
         centerTitle: true,
-        iconTheme: const IconThemeData(color: Colors.white), // Icônes blanches
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
-      backgroundColor: hospitalBackgroundColor, // Fond clair
+      backgroundColor: hospitalBackgroundColor,
       body: playerBaseAsyncValue.when(
-        // Chargement base joueur
         loading: () => Center(child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -125,13 +169,11 @@ class _CombatPageState extends ConsumerState<CombatPage> {
             Text('Préparation de votre équipe pour l\'analyse...', style: GoogleFonts.roboto(color: hospitalSubTextColor, fontStyle: FontStyle.italic)),
           ],
         )),
-        // Erreur base joueur
         error: (err, stack) => Center(
             child: Padding(
               padding: const EdgeInsets.all(20.0),
               child: Text('Erreur lors de la préparation de votre équipe : ${err.toString()}', textAlign: TextAlign.center, style: GoogleFonts.roboto(color: hospitalErrorColor, fontSize: 16)),
             )),
-        // Base joueur chargée
         data: (playerBase) {
           if (playerBase == null) {
             return Center(
@@ -153,9 +195,7 @@ class _CombatPageState extends ConsumerState<CombatPage> {
             );
           }
 
-          // Gère l'état de la base ennemie
           return enemyBaseAsyncValue.when(
-            // Chargement base ennemie
             loading: () => Center(child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -164,13 +204,11 @@ class _CombatPageState extends ConsumerState<CombatPage> {
                 Text('Analyse de l\'échantillon ennemi...', style: GoogleFonts.roboto(color: hospitalSubTextColor, fontStyle: FontStyle.italic)),
               ],
             )),
-            // Erreur base ennemie
             error: (err, stack) => Center(
                 child: Padding(
                   padding: const EdgeInsets.all(20.0),
                   child: Text('Erreur lors de l\'analyse de l\'échantillon ennemi : ${err.toString()}', textAlign: TextAlign.center, style: GoogleFonts.roboto(color: hospitalErrorColor, fontSize: 16)),
                 )),
-            // Base ennemie chargée
             data: (enemyBase) {
               if (enemyBase == null) {
                 return Center(
@@ -192,26 +230,22 @@ class _CombatPageState extends ConsumerState<CombatPage> {
                 );
               }
 
-              // Si les deux bases sont chargées
               return SingleChildScrollView(
-                padding: const EdgeInsets.all(20.0), // Padding général
+                padding: const EdgeInsets.all(20.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Titre principal
-                    Text('Tests de Stress Immunitaire', textAlign: TextAlign.center, style: GoogleFonts.montserrat(fontSize: 26, fontWeight: FontWeight.bold, color: hospitalAccentPink)), // Titre adapté, rose vif
+                    Text('Tests de Stress Immunitaire', textAlign: TextAlign.center, style: GoogleFonts.montserrat(fontSize: 26, fontWeight: FontWeight.bold, color: hospitalAccentPink)),
                     const SizedBox(height: 30),
 
-                    // --- Panneau Votre Équipe ---
                     _buildBaseInfoPanel(
-                      title: 'Votre Équipe Immunitaire', // Titre adapté
-                      icon: Icons.shield_outlined, // Icône bouclier/défense
-                      iconColor: hospitalPrimaryGreen, // Vert
+                      title: 'Votre Équipe Immunitaire',
+                      icon: Icons.shield_outlined,
+                      iconColor: hospitalPrimaryGreen,
                       base: playerBase,
                     ),
                     const SizedBox(height: 20),
 
-                    // --- Séparateur vs ---
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 10.0),
                       child: Row(
@@ -219,7 +253,7 @@ class _CombatPageState extends ConsumerState<CombatPage> {
                           const Expanded(child: Divider(color: hospitalSubTextColor, thickness: 0.5)),
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                            child: Text(' VS ', style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.bold, color: hospitalSubTextColor)), // Texte VS stylisé
+                            child: Text(' VS ', style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.bold, color: hospitalSubTextColor)),
                           ),
                           const Expanded(child: Divider(color: hospitalSubTextColor, thickness: 0.5)),
                         ],
@@ -227,39 +261,35 @@ class _CombatPageState extends ConsumerState<CombatPage> {
                     ),
                     const SizedBox(height: 20),
 
-
-                    // --- Panneau Équipe Ennemie ---
                     _buildBaseInfoPanel(
-                      title: 'Échantillon Pathogène Ennemi', // Titre adapté
-                      icon: Icons.bug_report_outlined, // Icône bug/pathogène
-                      iconColor: hospitalAccentPink, // Rose vif
+                      title: 'Échantillon Pathogène Ennemi',
+                      icon: Icons.bug_report_outlined,
+                      iconColor: hospitalAccentPink,
                       base: enemyBase,
                     ),
 
                     const SizedBox(height: 30),
 
-                    // **BOUTON POUR LANCER LA SIMULATION :**
-                    ElevatedButton.icon( // Bouton avec icône
+                    ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: _combatResult == null ? hospitalAccentPink : hospitalSubTextColor.withOpacity(0.3), // Rose vif si activable, gris si terminé
-                        foregroundColor: _combatResult == null ? Colors.white : hospitalSubTextColor, // Texte blanc si activable, gris si terminé
+                        backgroundColor: _simulationDisplayResult == null ? hospitalAccentPink : hospitalSubTextColor.withOpacity(0.3),
+                        foregroundColor: _simulationDisplayResult == null ? Colors.white : hospitalSubTextColor,
                         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
-                        elevation: _combatResult == null ? 4.0 : 0, // Ombre si activable
+                        elevation: _simulationDisplayResult == null ? 4.0 : 0,
                       ),
-                      onPressed: _combatResult == null ? () {
+                      onPressed: _simulationDisplayResult == null ? () {
                         print('Lancement de la simulation...');
                         _runSimulation(playerBase: playerBase, enemyBase: enemyBase);
                       } : null,
-                      icon: Icon(_combatResult == null ? Icons.play_arrow_outlined : Icons.check_circle_outline), // Icône play ou check
-                      label: Text(_combatResult == null ? 'Démarrer l\'Analyse' : 'Analyse Terminée', style: GoogleFonts.roboto(fontSize: 16, fontWeight: FontWeight.bold)), // Texte adapté
+                      icon: Icon(_simulationDisplayResult == null ? Icons.play_arrow_outlined : Icons.check_circle_outline),
+                      label: Text(_simulationDisplayResult == null ? 'Démarrer l\'Analyse' : 'Analyse Terminée', style: GoogleFonts.roboto(fontSize: 16, fontWeight: FontWeight.bold)),
                     ),
 
                     const SizedBox(height: 30),
 
-                    // **AFFICHAGE DU RÉSULTAT DE LA SIMULATION :**
-                    if (_combatResult != null)
-                      _buildSimulationResultPanel(_combatResult!), // Widget helper pour le résultat
+                    if (_simulationDisplayResult != null)
+                      _buildSimulationResultPanel(_simulationDisplayResult!),
 
                   ],
                 ),
@@ -271,12 +301,9 @@ class _CombatPageState extends ConsumerState<CombatPage> {
     );
   }
 
-  // --- Widgets helper pour le design (adaptés au thème hospitalier) ---
-
-  // Widget pour afficher les informations d'une base (joueur ou ennemie)
   Widget _buildBaseInfoPanel({required String title, required IconData icon, required Color iconColor, required BaseVirale base}) {
     return Card(
-      color: hospitalCardColor, // Fond blanc
+      color: hospitalCardColor,
       elevation: 2.0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
       child: Padding(
@@ -286,11 +313,11 @@ class _CombatPageState extends ConsumerState<CombatPage> {
           children: [
             Row(
               children: [
-                Icon(icon, size: 28, color: iconColor), // Icône du panneau
+                Icon(icon, size: 28, color: iconColor),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    title, // Titre (Votre Équipe / Échantillon Ennemi)
+                    title,
                     style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold, color: hospitalTextColor),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -302,8 +329,6 @@ class _CombatPageState extends ConsumerState<CombatPage> {
             Text('Nom : ${base.nom ?? 'Base sans nom'}', style: GoogleFonts.roboto(fontSize: 16, color: hospitalTextColor)),
             const SizedBox(height: 8),
             Text('Pathogènes en présence : ${base.pathogenes.length}', style: GoogleFonts.roboto(fontSize: 16, color: hospitalTextColor)),
-            // TODO: Ajouter ici un résumé des statistiques de la base (total PV, attaque moyenne, etc.)
-            // Exemple simple:
             if (base.pathogenes.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 8.0),
@@ -315,19 +340,19 @@ class _CombatPageState extends ConsumerState<CombatPage> {
     );
   }
 
-  // Widget pour afficher le panneau des résultats de simulation
   Widget _buildSimulationResultPanel(CombatResult result) {
-    // Détermine la couleur pour le vainqueur
     Color winnerColor = hospitalTextColor;
-    if (result.winner.contains('Joueur')) { // Adapter la chaîne 'Joueur' si elle change
-      winnerColor = hospitalPrimaryGreen; // Vert si le joueur gagne
-    } else if (result.winner.contains('Ennemi')) { // Adapter la chaîne 'Ennemi' si elle change
-      winnerColor = hospitalErrorColor; // Rouge si l'ennemi gagne
+    if (result.winner == 'player') {
+      winnerColor = hospitalPrimaryGreen;
+    } else if (result.winner == 'enemy') {
+      winnerColor = hospitalErrorColor;
+    } else if (result.winner == 'draw') {
+      winnerColor = hospitalWarningColor;
     }
 
 
     return Card(
-      color: hospitalCardColor, // Fond blanc
+      color: hospitalCardColor,
       elevation: 3.0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
       child: Padding(
@@ -335,22 +360,21 @@ class _CombatPageState extends ConsumerState<CombatPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Rapport d\'Analyse', style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.bold, color: hospitalTextColor)), // Titre adapté
+            Text('Rapport d\'Analyse', style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.bold, color: hospitalTextColor)),
             const Divider(color: hospitalSubTextColor, height: 20, thickness: 0.5),
-            Text('Issue de la Simulation : ${result.winner}', style: GoogleFonts.montserrat(fontSize: 18, fontWeight: FontWeight.bold, color: winnerColor)), // Vainqueur stylisé
+            Text('Issue de la Simulation : ${result.winner}', style: GoogleFonts.montserrat(fontSize: 18, fontWeight: FontWeight.bold, color: winnerColor)),
             const SizedBox(height: 8),
-            Text('Votre Équipe Restante : ${result.playerPathogensRemaining} contaminants', style: GoogleFonts.roboto(fontSize: 15, color: hospitalTextColor)), // Texte stylisé
-            Text('Échantillon Ennemi Restant : ${result.enemyPathogensRemaining} contaminants', style: GoogleFonts.roboto(fontSize: 15, color: hospitalTextColor)), // Texte stylisé
+            Text('Votre Équipe Restante : ${result.playerPathogensRemaining} contaminants', style: GoogleFonts.roboto(fontSize: 15, color: hospitalTextColor)),
+            Text('Échantillon Ennemi Restant : ${result.enemyPathogensRemaining} contaminants', style: GoogleFonts.roboto(fontSize: 15, color: hospitalTextColor)),
             const SizedBox(height: 20),
-            Text('Détails de l\'Analyse :', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold, color: hospitalTextColor)), // Titre log adapté
+            Text('Détails de l\'Analyse :', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold, color: hospitalTextColor)),
             const SizedBox(height: 8),
-            // Affiche le log de combat avec un style pour chaque ligne
             ...result.combatLog.map((logEntry) =>
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 2.0),
                   child: Text(
                     logEntry,
-                    style: GoogleFonts.roboto(fontSize: 13, color: hospitalSubTextColor), // Police plus petite et grise pour le log
+                    style: GoogleFonts.roboto(fontSize: 13, color: hospitalSubTextColor),
                   ),
                 )
             ).toList(),
@@ -359,5 +383,4 @@ class _CombatPageState extends ConsumerState<CombatPage> {
       ),
     );
   }
-
-} // Fin de la classe CombatPage
+}

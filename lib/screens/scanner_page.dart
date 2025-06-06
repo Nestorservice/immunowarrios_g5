@@ -4,9 +4,9 @@ import 'package:google_fonts/google_fonts.dart'; // Importe Google Fonts
 
 import '../state/auth_state_provider.dart'; // Importe nos providers
 import '../models/base_virale.dart'; // Importe le modèle BaseVirale
-import 'base_details_page.dart';
-// Importe LoginPage si nécessaire pour la navigation (bien que non utilisé directement ici)
-// import 'login_page.dart';
+import '../services/firestore_service.dart'; // Importe le FirestoreService
+import 'base_details_page.dart'; // Assurez-vous que cette page existe si vous la gardez
+import 'combat_visualization_page.dart'; // La page de visualisation du combat
 
 // --- Palette de couleurs thématique "Immuno-Médical" (clair, propre) ---
 // Réutilise les couleurs définies précédemment
@@ -16,8 +16,43 @@ const Color hospitalBackgroundColor = Color(0xFFF5F5F5); // Fond clair principal
 const Color hospitalCardColor = Color(0xFFFFFFFF); // Fond blanc pour les panneaux / cartes (Propre)
 const Color hospitalTextColor = Color(0xFF212121); // Texte sombre sur fond clair (Lecture facile)
 const Color hospitalSubTextColor = Color(0xFF757575); // Texte moins important / labels (Gris moyen)
-const Color hospitalWarningColor = Color(0xFFFF9800); // Orange (Avertissement)
-const Color hospitalErrorColor = Color(0xFFF44336); // Rouge Vif (Erreur)
+const Color hospitalWarningColor = Color(0xFFF44336); // Rouge (Erreur, Danger)
+const Color hospitalErrorColor = Color(0xFFFF9800); // Orange (Avertissement)
+
+
+// Provider pour toutes les bases virales sauf celle de l'utilisateur connecté
+final allBasesProvider = StreamProvider.autoDispose<List<BaseVirale>>((ref) {
+  final authState = ref.watch(authStateChangesProvider);
+  final firestoreService = ref.watch(firestoreServiceProvider);
+
+  return authState.when(
+    data: (user) {
+      if (user != null) {
+        // CORRECTION ICI : Appel à streamAllOtherViralBases avec l'ID de l'utilisateur
+        return firestoreService.streamAllOtherViralBases(user.uid);
+      }
+      return Stream.value([]); // Retourne un stream vide si pas d'utilisateur connecté
+    },
+    loading: () => Stream.value([]), // Retourne un stream vide pendant le chargement
+    error: (err, stack) => Stream.error(err), // Retourne une erreur en cas de problème
+  );
+});
+
+// Provider pour la base virale de l'utilisateur (sera utilisé pour le combat)
+final playerBaseProvider = StreamProvider.autoDispose<BaseVirale?>((ref) {
+  final authState = ref.watch(authStateChangesProvider);
+  return authState.when(
+    data: (user) {
+      if (user != null) {
+        final firestoreService = ref.watch(firestoreServiceProvider);
+        return firestoreService.streamViralBase(user.uid);
+      }
+      return Stream.value(null);
+    },
+    loading: () => Stream.value(null),
+    error: (err, stack) => Stream.value(null),
+  );
+});
 
 
 class ScannerPage extends ConsumerWidget {
@@ -25,99 +60,124 @@ class ScannerPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Regarde la liste de toutes les bases virales via le provider.
-    final viralBasesAsyncValue = ref.watch(allViralBasesProvider);
+    // Écoute le stream des bases virales (autres que celle de l'utilisateur)
+    final basesAsyncValue = ref.watch(allBasesProvider);
+    // Écoute le stream de la base virale du joueur
+    final playerBaseAsyncValue = ref.watch(playerBaseProvider);
 
     return Scaffold(
-      // AppBar thématique claire et propre
       appBar: AppBar(
-        title: Text('Analyseur Pathogène', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold)), // Titre adapté, police propre
-        backgroundColor: hospitalPrimaryGreen, // Couleur de fond verte (scanneurs souvent verts)
-        elevation: 1.0, // Légère ombre
-        centerTitle: true, // Centrer le titre
-        iconTheme: const IconThemeData(color: Colors.white), // Icônes (retour) blanches
+        title: Text(
+          'Diagnostic Viral',
+          style: GoogleFonts.poppins(
+            color: hospitalTextColor, // Texte sombre
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        backgroundColor: hospitalBackgroundColor, // Fond clair
+        elevation: 1.0, // Petite ombre
+        centerTitle: true,
       ),
-      backgroundColor: hospitalBackgroundColor, // Fond très clair pour le corps du Scaffold
-      body: viralBasesAsyncValue.when(
-        // Quand la liste des bases est prête
+      backgroundColor: hospitalBackgroundColor, // Fond de la page
+      body: basesAsyncValue.when(
+        // Quand les données sont disponibles
         data: (bases) {
-          // Filtrer potentiellement la base de l'utilisateur connecté si vous ne voulez pas la scanner
-          final currentUser = ref.read(authStateChangesProvider).value;
-          final filteredBases = bases.where((base) => currentUser == null || base.createurId != currentUser.uid).toList();
-
-
-          if (filteredBases.isEmpty) {
-            // Message pour l'état vide stylisé (aucune menace)
+          if (bases.isEmpty) {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(20.0),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.check_circle_outline, size: 60, color: hospitalPrimaryGreen.withOpacity(0.8)), // Icône verte (OK)
+                    Icon(Icons.wifi_off, size: 60, color: hospitalSubTextColor),
                     const SizedBox(height: 16),
                     Text(
-                      'Aucune contamination détectée dans le réseau.\nTous les systèmes sont sûrs.', // Message adapté
+                      'Aucun échantillon de base virale à scanner actuellement.',
                       textAlign: TextAlign.center,
-                      style: GoogleFonts.roboto(fontSize: 18, color: hospitalSubTextColor), // Police standard, gris moyen
+                      style: GoogleFonts.roboto(fontSize: 18, color: hospitalSubTextColor),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Créez la vôtre dans la Bio-Forge, ou attendez que d\'autres joueurs en créent !',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.roboto(fontSize: 14, color: hospitalSubTextColor.withOpacity(0.8)),
                     ),
                   ],
                 ),
               ),
             );
           }
-          // Affiche la liste des bases virales filtrées avec des Cards stylisées
+
+          // Affiche la liste des bases virales (autres que la sienne)
           return ListView.builder(
-            padding: const EdgeInsets.all(12.0), // Padding autour de la liste
-            itemCount: filteredBases.length,
+            padding: const EdgeInsets.all(16.0), // Marge autour de la liste
+            itemCount: bases.length,
             itemBuilder: (context, index) {
-              final base = filteredBases[index];
-              // Utilise un Card pour chaque élément de la liste
+              final base = bases[index];
               return Card(
-                color: hospitalCardColor, // Fond blanc propre pour la carte
-                margin: const EdgeInsets.symmetric(vertical: 8.0), // Marge verticale
-                elevation: 2.0, // Légère ombre
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)), // Coins légèrement arrondis
-                child: InkWell( // Rend la carte tappable
-                  borderRadius: BorderRadius.circular(8.0), // Coins pour l'effet d'encre
-                  onTap: () {
-                    // Naviguer vers la page de détails de la base
+                color: hospitalCardColor, // Fond blanc pour les cartes
+                margin: const EdgeInsets.symmetric(vertical: 8.0), // Marge verticale entre les cartes
+                elevation: 3.0, // Ombre légère pour effet de profondeur
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10.0), // Bords arrondis
+                ),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(10.0),
+                  onTap: () async {
+                    // Récupère la base du joueur de manière synchrone (une fois)
+                    // Utilise .value pour obtenir la dernière valeur du StreamProvider
+                    final playerBase = playerBaseAsyncValue.value;
+
+                    if (playerBase == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Votre équipe immunitaire n\'est pas prête. Veuillez la créer dans la Bio-Forge.'),
+                          backgroundColor: hospitalWarningColor,
+                        ),
+                      );
+                      return;
+                    }
+
+                    if (playerBase.pathogenes.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Votre équipe immunitaire est vide ! Créez des pathogènes dans la Bio-Forge.'),
+                          backgroundColor: hospitalWarningColor,
+                        ),
+                      );
+                      return;
+                    }
+
+                    // Navigue vers la page de visualisation du combat
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => BaseDetailsPage(baseId: base.id),
+                        builder: (context) => CombatVisualizationPage(
+                          playerBase: playerBase,
+                          enemyBase: base, // La base sélectionnée est la base ennemie
+                        ),
                       ),
                     );
                   },
                   child: Padding(
-                    padding: const EdgeInsets.all(16.0), // Padding intérieur
-                    child: Row( // Aligne icône et texte
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
                       children: [
-                        // Icône d'alerte ou de contaminant
-                        Icon(
-                          base.pathogenes.isNotEmpty ? Icons.warning_amber_outlined : Icons.health_and_safety_outlined, // Icône différente si pathogènes présents ou non
-                          size: 40,
-                          color: base.pathogenes.isNotEmpty ? hospitalAccentPink : hospitalPrimaryGreen.withOpacity(0.7), // Rose vif si pathogènes (alerte), vert si vide (sain)
-                        ),
-                        const SizedBox(width: 16), // Espace
-                        Expanded( // Permet à la colonne de texte de prendre l'espace restant
+                        // Icône ou avatar (peut être amélioré avec une image plus tard)
+                        Icon(Icons.bug_report, size: 40, color: hospitalAccentPink), // Icône de bug, rose vif
+                        const SizedBox(width: 16),
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Nom de la base virale (Titre)
                               Text(
-                                base.nom ?? 'Source Pathogène Inconnue', // Texte adapté
-                                style: GoogleFonts.montserrat( // Police pour les titres/noms
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: hospitalTextColor, // Texte sombre
-                                ),
-                                overflow: TextOverflow.ellipsis, // Empêche le texte de déborder
+                                base.nom ?? 'Base Inconnue', // Nom de la base, police Poppins, gras
+                                style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold, color: hospitalTextColor),
+                                overflow: TextOverflow.ellipsis,
                               ),
                               const SizedBox(height: 4),
-                              // Détails (Sous-titre)
                               Text(
-                                'Identifiant : ${base.createurId.substring(0, 6)}... | Contaminants : ${base.pathogenes.length}', // Texte adapté
+                                'Créateur : ${base.createurId.substring(0, 6)}... | Contaminants : ${base.pathogenes.length}', // Texte adapté
                                 style: GoogleFonts.roboto(fontSize: 14, color: hospitalSubTextColor), // Police standard, gris moyen
                                 overflow: TextOverflow.ellipsis,
                               ),

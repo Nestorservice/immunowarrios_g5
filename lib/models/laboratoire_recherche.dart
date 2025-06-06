@@ -1,11 +1,10 @@
-import 'package:hive/hive.dart'; // <-- AJOUTE CET IMPORT
+// lib/models/laboratoire_recherche.dart
+import 'package:hive/hive.dart';
 
 part 'laboratoire_recherche.g.dart';
 
-// **AJOUTE CETTE LIGNE AVANT LA CLASSE**
-@HiveType(typeId: 1) // Utilise le prochain typeId disponible
+@HiveType(typeId: 1)
 class LaboratoireRecherche {
-  // **AJOUTE CETTE LIGNE AVANT CHAQUE ATTRIBUT À STOCKER**
   @HiveField(0)
   double pointsRecherche;
 
@@ -17,9 +16,18 @@ class LaboratoireRecherche {
     List<String>? recherchesDebloquees,
   }) : recherchesDebloquees = recherchesDebloquees ?? [];
 
-  // ... (méthodes existantes) ...
+  // Méthode copyWith pour créer une nouvelle instance avec des modifications
+  LaboratoireRecherche copyWith({
+    double? pointsRecherche,
+    List<String>? recherchesDebloquees,
+  }) {
+    return LaboratoireRecherche(
+      pointsRecherche: pointsRecherche ?? this.pointsRecherche,
+      recherchesDebloquees: recherchesDebloquees ?? this.recherchesDebloquees,
+    );
+  }
 
-  // Méthode pour convertir en Map (reste la même)
+  // Méthode pour convertir en Map pour Firestore
   Map<String, dynamic> toJson() {
     return {
       'pointsRecherche': pointsRecherche,
@@ -27,10 +35,10 @@ class LaboratoireRecherche {
     };
   }
 
-  // Méthode pour créer un objet à partir d'une Map (reste la même)
+  // Méthode pour créer un objet à partir d'une Map (ajout de null-safety)
   static LaboratoireRecherche fromJson(Map<String, dynamic> json) {
     return LaboratoireRecherche(
-      pointsRecherche: json['pointsRecherche'].toDouble(),
+      pointsRecherche: (json['pointsRecherche'] as num?)?.toDouble() ?? 0.0,
       recherchesDebloquees: List<String>.from(json['recherchesDebloquees'] ?? []),
     );
   }

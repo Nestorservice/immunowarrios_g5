@@ -1,3 +1,4 @@
+// lib/models/base_virale.dart
 import 'agent_pathogene.dart'; // On importe AgentPathogene pour pouvoir stocker une liste de pathogènes
 
 class BaseVirale {
@@ -15,13 +16,19 @@ class BaseVirale {
     // Paramètres pour les défenses passives
   }) : pathogenes = pathogenes ?? [];
 
-  // Méthode pour ajouter un pathogène à la base
+  // Méthode pour ajouter un pathogène à la base (sera remplacée par copyWith dans l'UI)
+  // Conserver pour d'autres usages internes si nécessaire
   void ajouterPathogene(AgentPathogene pathogene) {
+    // Cette méthode modifie l'objet existant. Pour Riverpod/Firebase,
+    // il est souvent mieux de créer une nouvelle instance via copyWith.
+    // Cependant, elle reste fonctionnelle si elle est utilisée ailleurs.
     pathogenes.add(pathogene);
   }
 
-  // Méthode pour retirer un pathogène (ex: après un combat ou si le joueur le retire)
+  // Méthode pour retirer un pathogène (sera remplacée par copyWith dans l'UI)
+  // Conserver pour d'autres usages internes si nécessaire
   void retirerPathogene(String pathogeneId) {
+    // Comme pour ajouterPathogene, préférer copyWith dans l'UI.
     pathogenes.removeWhere((p) => p.id == pathogeneId);
   }
 
@@ -33,29 +40,37 @@ class BaseVirale {
       'createurId': createurId,
       // Convertir la liste de pathogènes en liste de Maps
       'pathogenes': pathogenes.map((p) => p.toJson()).toList(),
-      // Attributs des défenses passives
+      // Attributs des défenses passives (à ajouter ici si vous en avez)
     };
   }
 
   // Méthode de classe (static) pour créer un objet BaseVirale à partir d'une Map
   static BaseVirale fromJson(Map<String, dynamic> json) {
-    // Pour désérialiser la liste de pathogènes, on a besoin de la fonction fromMap
-    // mentionnée dans agent_pathogene.dart (ou une logique similaire)
-    // On utilisera le Helper fromMap quand on chargera depuis Firestore.
     return BaseVirale(
       id: json['id'],
       nom: json['nom'],
       createurId: json['createurId'],
-      // Ici, on doit convertir la liste de Maps en liste d'objets AgentPathogene
-      // On fera ça quand on chargera depuis Firestore/Hive.
-      // Pour l'instant, on peut mettre une liste vide ou gérer la désérialisation
-      // via une fonction helper.
-      // Exemple simple (nécessite la fonction AgentPathogene.fromMap):
-      // pathogenes: (json['pathogenes'] as List<dynamic>?)
-      //     ?.map((item) => AgentPathogene.fromMap(item as Map<String, dynamic>))
-      //     .whereType<AgentPathogene>() // Filtre les null si fromMap retourne null
-      //     .toList() ?? [],
-      pathogenes: [], // Placeholder pour l'instant, on gérera la désérialisation plus tard
+      // CORRECTION ICI : Désérialisation correcte des pathogènes
+      pathogenes: (json['pathogenes'] as List<dynamic>?)
+          ?.map((item) => AgentPathogene.fromMap(item as Map<String, dynamic>))
+          .whereType<AgentPathogene>() // Filtre les nulls si fromMap retourne null
+          .toList() ?? [],
     );
   }
+
+  // **** NOUVELLE MÉTHODE copyWith ****
+  BaseVirale copyWith({
+    String? id,
+    String? nom,
+    String? createurId,
+    List<AgentPathogene>? pathogenes,
+  }) {
+    return BaseVirale(
+      id: id ?? this.id,
+      nom: nom ?? this.nom,
+      createurId: createurId ?? this.createurId,
+      pathogenes: pathogenes ?? this.pathogenes,
+    );
+  }
+// **********************************
 }

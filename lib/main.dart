@@ -2,8 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
 import 'firebase_options.dart';
-import 'screens/auth_checker.dart';
+import 'screens/auth_checker.dart'; // Your existing authentication checker
+import 'screens/splash_screen.dart'; // <<< NEW: Import your splash screen
+
 // Assure-toi d'importer les modèles qui auront des Adapters Hive (pour les types)
 import 'models/ressources_defensives.dart';
 import 'models/laboratoire_recherche.dart';
@@ -12,26 +16,28 @@ import 'models/memoire_immunitaire.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Load environment variables from .env file
+  await dotenv.load(fileName: ".env");
+
+  // Initialize Firebase
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // **AJOUT IMPORTANT :** Initialisation de Hive
+  // Initialize Hive
   await Hive.initFlutter();
 
-  // **AJOUT IMPORTANT :** Enregistrer les Adapters pour tes modèles
-  // Ces Adapters sont définis dans les fichiers .g.dart que tu as importés
-  Hive.registerAdapter(RessourcesDefensivesAdapter()); // Le nom de la classe Adapter générée
-  Hive.registerAdapter(LaboratoireRechercheAdapter()); // Le nom de la classe Adapter générée
-  Hive.registerAdapter(MemoireImmunitaireAdapter()); // Le nom de la classe Adapter générée
-  // TODO: Enregistrer les Adapters pour d'autres modèles si tu les stockes dans Hive
+  // Register Hive Adapters for your models
+  Hive.registerAdapter(RessourcesDefensivesAdapter());
+  Hive.registerAdapter(LaboratoireRechercheAdapter());
+  Hive.registerAdapter(MemoireImmunitaireAdapter());
+  // TODO: Register Adapters for other models if you store them in Hive
 
-  // **AJOUT IMPORTANT :** Ouvrir les boîtes Hive nécessaires
-  // Assure-toi d'utiliser les mêmes noms de boîtes que dans hive_service.dart
+  // Open necessary Hive boxes
   await Hive.openBox<RessourcesDefensives>('resourcesBox');
   await Hive.openBox<LaboratoireRecherche>('researchBox');
   await Hive.openBox<MemoireImmunitaire>('immuneMemoryBox');
-  // TODO: Ouvrir d'autres boîtes si nécessaire
+  // TODO: Open other boxes if necessary
 
   runApp(
     const ProviderScope(
@@ -40,7 +46,6 @@ void main() async {
   );
 }
 
-// ... (Le reste de ta classe MyApp) ...
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -48,11 +53,13 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'ImmunoWarriors',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
-      home: const AuthChecker(),
+      // The app now starts with the SplashScreen
+      home: const SplashScreen(),
     );
   }
 }

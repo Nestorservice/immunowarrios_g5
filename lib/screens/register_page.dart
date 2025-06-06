@@ -1,243 +1,352 @@
+// lib/screens/register_page.dart
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:animated_widgets/animated_widgets.dart';
 import '../state/auth_state_provider.dart';
+import '../services/firestore_service.dart';
+import 'login_page.dart';
 
-// --- Réutilise la même palette de couleurs pour la cohérence ---
-const Color primaryColor = Color(0xFF4CAF50); // Vert immunitaire
-const Color accentColor = Color(0xFF2196F3); // Bleu technologique
-const Color cardColor = Color(0xFFFFFFFF); // Fond blanc pour la carte du formulaire
-const Color textColor = Color(0xFF333333); // Texte sombre
-const Color subTextColor = Color(0xFF555555); // Texte moins important
-const Color successColor = Color(0xFF4CAF50); // Vert pour les messages de succès
-const Color errorColor = Colors.redAccent; // Couleur pour les messages d'erreur
+// --- Palette de couleurs "Cyber-Tech" (variante pour l'inscription) ---
+const Color registerPrimary = Color(0xFF00BFFF); // Bleu Ciel Profond / Azur
+const Color registerSecondary = Color(0xFF00FF00); // Vert Néon
+const Color registerGold = Color(0xFFFFD700); // Jaune Or
+const Color registerWhite = Color(0xFFF0F0F0); // Blanc cassé
+const Color registerBlack = Color(0xFF121212); // Noir très foncé
+const Color registerGrey = Color(0xFF333333); // Gris foncé
+const double borderRadius = 18.0;
 
-class RegisterPage extends ConsumerWidget {
+class RegisterPage extends ConsumerStatefulWidget {
   const RegisterPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // Controllers pour les champs email et mot de passe
-    // REMARQUE : Voir la note sur les TextEditingController dans LoginPage pour une gestion propre
-    // de la mémoire dans un projet réel (utiliser StatefulWidget et dispose()).
-    final TextEditingController emailController = TextEditingController();
-    final TextEditingController passwordController = TextEditingController();
+  ConsumerState<RegisterPage> createState() => _RegisterPageState();
+}
 
-    // On obtient l'instance de AuthService via le provider
+class _RegisterPageState extends ConsumerState<RegisterPage> with TickerProviderStateMixin {
+  final TextEditingController emailController = TextEditingController();
+  final TextEditingController passwordController = TextEditingController();
+  late AnimationController _fadeController;
+  late Animation<double> _fadeAnimation;
+  late AnimationController _slideController;
+  late Animation<Offset> _slideAnimation;
+  late AnimationController _glowController;
+  late Animation<Color?> _glowAnimation;
+
+  bool _obscurePassword = true;
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _fadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    );
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _fadeController, curve: Curves.easeIn),
+    );
+
+    _slideController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    );
+    _slideAnimation = Tween<Offset>(begin: const Offset(0, 0.5), end: Offset.zero).animate(
+      CurvedAnimation(parent: _slideController, curve: Curves.easeOutCubic),
+    );
+
+    _glowController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+      reverseDuration: const Duration(seconds: 2),
+    )..repeat(reverse: true);
+    _glowAnimation = ColorTween(begin: registerPrimary.withOpacity(0.2), end: registerPrimary.withOpacity(0.6)).animate(_glowController);
+
+
+    _fadeController.forward();
+    _slideController.forward();
+  }
+
+  @override
+  void dispose() {
+    emailController.dispose();
+    passwordController.dispose();
+    _fadeController.dispose();
+    _slideController.dispose();
+    _glowController.dispose();
+    super.dispose();
+  }
+
+  void _showSnackBar(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.redAccent : registerSecondary,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final authService = ref.watch(authServiceProvider);
+    final firestoreService = ref.watch(firestoreServiceProvider);
+    final screenWidth = MediaQuery.of(context).size.width;
 
     return Scaffold(
-      // Amélioration de l'AppBar
-      appBar: AppBar(
-        title: const Text('Créer un Cyber-Profil', style: TextStyle(color: Colors.white)), // Titre blanc
-        backgroundColor: primaryColor, // Couleur de fond verte
-        elevation: 4.0, // Ombre légère
-        centerTitle: true, // Centrer le titre
-      ),
-      body: Container(
-        // Optionnel : Ajouter un dégradé ou une image de fond subtile (commenté)
-        // decoration: BoxDecoration(
-        //   gradient: LinearGradient(
-        //     begin: Alignment.topCenter,
-        //     end: Alignment.bottomCenter,
-        //     colors: [Colors.lightGreen[100]!, Colors.lightBlue[100]!],
-        //   ),
-        // ),
-        child: Center(
-          child: SingleChildScrollView(
-            // Ajout de padding autour du contenu scrollable
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch, // Étirer les éléments
-              children: [
-                // --- Titre de la Page ---
-                Text(
-                  'Rejoins la Cyber-Défense',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 28, // Plus grande taille
-                    fontWeight: FontWeight.bold,
-                    color: textColor,
-                    // Utiliser GoogleFonts si importé: GoogleFonts.orbitron(fontSize: 28, fontWeight: FontWeight.bold)
+      backgroundColor: registerBlack,
+      body: Stack(
+        children: [
+          // Effet de fond animé (gradient ou particules)
+          AnimatedBuilder(
+            animation: _glowController,
+            builder: (context, child) {
+              return Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      registerGrey.withOpacity(0.4),
+                      registerBlack,
+                      registerGrey.withOpacity(0.4),
+                    ],
+                    begin: Alignment.topRight,
+                    end: Alignment.bottomLeft,
+                    stops: [
+                      _glowController.value * 0.7,
+                      0.5,
+                      1.0 - _glowController.value * 0.7,
+                    ],
                   ),
                 ),
-                const SizedBox(height: 30),
-
-                // --- Formulaire dans un Card ---
-                Card(
-                  elevation: 8.0, // Ombre plus prononcée
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)), // Coins arrondis
-                  child: Padding(
-                    padding: const EdgeInsets.all(20.0), // Padding à l'intérieur de la carte
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // Champ pour l'email (Stylisé)
-                        TextField(
-                          controller: emailController,
-                          decoration: InputDecoration(
-                            labelText: 'Email Cyber-Profil',
-                            labelStyle: TextStyle(color: subTextColor),
-                            prefixIcon: Icon(Icons.email_outlined, color: accentColor), // Icône email
-                            border: OutlineInputBorder( // Bordure stylisée
-                              borderRadius: BorderRadius.circular(8.0),
-                              borderSide: BorderSide(color: accentColor, width: 1.5),
-                            ),
-                            focusedBorder: OutlineInputBorder( // Bordure quand le champ est focus
-                              borderRadius: BorderRadius.circular(8.0),
-                              borderSide: BorderSide(color: primaryColor, width: 2.0),
-                            ),
-                            enabledBorder: OutlineInputBorder( // Bordure quand le champ n'est pas focus
-                              borderRadius: BorderRadius.circular(8.0),
-                              borderSide: BorderSide(color: accentColor.withOpacity(0.5), width: 1.0),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(vertical: 15.0, horizontal: 10.0),
-                          ),
-                          keyboardType: TextInputType.emailAddress,
-                          style: TextStyle(color: textColor),
-                          cursorColor: primaryColor,
+              );
+            },
+          ),
+          Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(30.0),
+              child: FadeTransition(
+                opacity: _fadeAnimation,
+                child: SlideTransition(
+                  position: _slideAnimation,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: <Widget>[
+                      Hero(
+                        tag: 'authLogo',
+                        child: Image.asset(
+                          'assets/images/logo2.png', // Assurez-vous que ce chemin est correct
+                          height: 140,
+                          fit: BoxFit.contain,
                         ),
-                        const SizedBox(height: 20), // Espace entre les champs
-
-                        // Champ pour le mot de passe (Stylisé)
-                        TextField(
-                          controller: passwordController,
-                          decoration: InputDecoration(
-                            labelText: 'Mot de Passe d\'Accès',
-                            labelStyle: TextStyle(color: subTextColor),
-                            prefixIcon: Icon(Icons.lock_outline, color: accentColor), // Icône cadenas
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8.0),
-                              borderSide: BorderSide(color: accentColor, width: 1.5),
+                      ),
+                      const SizedBox(height: 25),
+                      Text(
+                        'Enrôlement dans la Résistance Immunitaire',
+                        style: GoogleFonts.poppins(
+                          fontSize: 26,
+                          fontWeight: FontWeight.bold,
+                          color: registerPrimary,
+                          shadows: [
+                            Shadow(
+                              color: registerPrimary.withOpacity(0.6),
+                              blurRadius: 15,
                             ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8.0),
-                              borderSide: BorderSide(color: primaryColor, width: 2.0),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8.0),
-                              borderSide: BorderSide(color: accentColor.withOpacity(0.5), width: 1.0),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(vertical: 15.0, horizontal: 10.0),
-                          ),
-                          obscureText: true,
-                          style: TextStyle(color: textColor),
-                          cursorColor: primaryColor,
+                          ],
                         ),
-                        const SizedBox(height: 30), // Espace avant les boutons
-
-                        // Bouton d'Enregistrement (Stylisé)
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: primaryColor, // Couleur de fond verte
-                            foregroundColor: Colors.white, // Texte blanc
-                            padding: const EdgeInsets.symmetric(vertical: 15.0), // Padding vertical
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)), // Coins arrondis
-                            elevation: 5.0, // Ombre
-                          ),
-                          onPressed: () async {
-                            final email = emailController.text.trim();
-                            final password = passwordController.text.trim();
-
-                            if (email.isEmpty || password.isEmpty) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: const Text('Veuillez remplir tous les champs.'),
-                                  backgroundColor: errorColor, // Fond rouge pour erreur
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 15),
+                      Text(
+                        'Rejoignez notre armée de défenseurs contre les menaces.',
+                        style: GoogleFonts.openSans(
+                          fontSize: 16,
+                          color: registerWhite.withOpacity(0.8),
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 40),
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(borderRadius),
+                          border: Border.all(color: _glowAnimation.value ?? registerGrey.withOpacity(0.5), width: 1.5),
+                          boxShadow: [
+                            BoxShadow(
+                              color: _glowAnimation.value?.withOpacity(0.2) ?? Colors.transparent,
+                              blurRadius: 20,
+                              spreadRadius: 5,
+                            ),
+                          ],
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 25),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            TextField(
+                              controller: emailController,
+                              keyboardType: TextInputType.emailAddress,
+                              style: GoogleFonts.roboto(color: registerWhite, fontSize: 16),
+                              decoration: InputDecoration(
+                                hintText: 'Adresse e-mail (votre identifiant)',
+                                hintStyle: GoogleFonts.roboto(color: registerWhite.withOpacity(0.5)),
+                                prefixIcon: Icon(Icons.email_outlined, color: registerSecondary),
+                                filled: true,
+                                fillColor: Colors.white.withOpacity(0.05),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide.none,
                                 ),
-                              );
-                              return;
-                            }
-
-                            final currentContext = context;
-                            final currentUserRef = ref;
-
-                            // Optionnel : Afficher un indicateur de chargement
-                            // showDialog(...);
-
-                            try {
-                              User? user = await authService.signUpWithEmailAndPassword(email, password);
-
-                              // Fermer l'indicateur de chargement si utilisé
-                              // Navigator.of(currentContext).pop();
-
-                              if (!currentUserRef.context.mounted) {
-                                return;
-                              }
-
-                              if (user != null) {
-                                ScaffoldMessenger.of(currentContext).showSnackBar(
-                                  SnackBar(
-                                    content: const Text('Cyber-Profil créé avec succès !'),
-                                    backgroundColor: successColor, // Fond vert pour succès
-                                  ),
-                                );
-                                // Revenir à la page de connexion après un court délai (optionnel)
-                                await Future.delayed(const Duration(seconds: 2)); // Ajoute un petit délai
-                                if (currentUserRef.context.mounted) {
-                                  Navigator.pop(currentContext);
-                                }
-
-                              } else {
-                                // Si l'enregistrement échoue (l'erreur spécifique est gérée dans AuthService)
-                                // Un message d'erreur générique est affiché.
-                                ScaffoldMessenger.of(currentContext).showSnackBar(
-                                  SnackBar(
-                                    content: const Text('Échec de la création du Cyber-Profil. Email déjà utilisé ou mot de passe faible ?'),
-                                    backgroundColor: errorColor, // Fond rouge pour erreur
-                                  ),
-                                );
-                              }
-                            } catch (e) {
-                              // Gestion des erreurs potentielles non gérées par AuthService de base
-                              // Fermer l'indicateur de chargement si utilisé
-                              // Navigator.of(currentContext).pop();
-
-                              if (!currentUserRef.context.mounted) {
-                                return;
-                              }
-                              ScaffoldMessenger.of(currentContext).showSnackBar(
-                                SnackBar(
-                                  content: Text('Erreur lors de la création : ${e.toString()}'),
-                                  backgroundColor: errorColor,
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide(color: registerGold, width: 2),
                                 ),
-                              );
-                              print('Erreur d\'enregistrement : $e'); // Log pour le debug
-                            }
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                            TextField(
+                              controller: passwordController,
+                              obscureText: _obscurePassword,
+                              style: GoogleFonts.roboto(color: registerWhite, fontSize: 16),
+                              decoration: InputDecoration(
+                                hintText: 'Mot de passe (min. 6 caractères)',
+                                hintStyle: GoogleFonts.roboto(color: registerWhite.withOpacity(0.5)),
+                                prefixIcon: Icon(Icons.lock_outline, color: registerSecondary),
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                                    color: registerWhite.withOpacity(0.7),
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      _obscurePassword = !_obscurePassword;
+                                    });
+                                  },
+                                ),
+                                filled: true,
+                                fillColor: Colors.white.withOpacity(0.05),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide.none,
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide(color: registerGold, width: 2),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 30),
+                            SizedBox(
+                              width: screenWidth * 0.75,
+                              height: 55,
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: registerPrimary,
+                                  foregroundColor: cyberBlack,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(borderRadius),
+                                  ),
+                                  elevation: 8.0,
+                                  shadowColor: registerPrimary.withOpacity(0.6),
+                                ),
+                                onPressed: _isLoading ? null : () async {
+                                  setState(() {
+                                    _isLoading = true;
+                                  });
+                                  if (passwordController.text.trim().length < 6) {
+                                    _showSnackBar('Le mot de passe doit contenir au moins 6 caractères.', isError: true);
+                                    setState(() {
+                                      _isLoading = false;
+                                    });
+                                    return;
+                                  }
+                                  try {
+                                    User? user = await authService.signUpWithEmailAndPassword(
+                                      emailController.text.trim(),
+                                      passwordController.text.trim(),
+                                    );
+                                    if (!mounted) return;
 
-                          },
-                          child: const Text(
-                            'Créer mon Cyber-Profil',
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold), // Texte plus grand et gras
+                                    if (user != null) {
+                                      await firestoreService.createUserProfile(
+                                        userId: user.uid,
+                                        email: user.email!,
+                                      );
+                                      _showSnackBar('Cyber-Profil créé avec succès ! Bienvenue, Agent.', isError: false);
+                                      // Retour à la page de connexion après un court délai
+                                      Future.delayed(const Duration(seconds: 1), () {
+                                        if (mounted) {
+                                          Navigator.pop(context);
+                                        }
+                                      });
+                                    } else {
+                                      // Ce cas est généralement géré par FirebaseAuthException
+                                      _showSnackBar('Échec de l\'inscription. Veuillez réessayer.', isError: true);
+                                    }
+                                  } on FirebaseAuthException catch (e) {
+                                    if (!mounted) return;
+                                    String message = 'Une erreur est survenue lors de l\'inscription.';
+                                    if (e.code == 'weak-password') {
+                                      message = 'Mot de passe trop faible.';
+                                    } else if (e.code == 'email-already-in-use') {
+                                      message = 'Cet e-mail est déjà utilisé. Veuillez vous connecter.';
+                                    } else if (e.code == 'invalid-email') {
+                                      message = 'L\'adresse e-mail n\'est pas valide.';
+                                    } else if (e.code == 'network-request-failed') {
+                                      message = 'Problème de connexion réseau. Veuillez vérifier votre internet.';
+                                    } else {
+                                      message = 'Erreur Firebase: ${e.message}';
+                                    }
+                                    _showSnackBar(message, isError: true);
+                                  } catch (e) {
+                                    if (!mounted) return;
+                                    _showSnackBar('Erreur inattendue: ${e.toString()}', isError: true);
+                                  } finally {
+                                    if (mounted) {
+                                      setState(() {
+                                        _isLoading = false;
+                                      });
+                                    }
+                                  }
+                                },
+                                child: _isLoading
+                                    ? const CircularProgressIndicator(color: cyberBlack)
+                                    : Text(
+                                  'Rejoindre la Résistance',
+                                  style: GoogleFonts.poppins(fontSize: 19, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 25),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.pop(context);
+                        },
+                        child: Text(
+                          'Déjà enrôlé ? Connectez-vous ici',
+                          style: GoogleFonts.roboto(
+                            color: registerSecondary,
+                            fontSize: 16,
+                            decoration: TextDecoration.underline,
+                            decorationColor: registerSecondary,
                           ),
                         ),
-                        const SizedBox(height: 15), // Espace entre les boutons
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
-
-                const SizedBox(height: 20), // Espace après la carte
-
-                // Bouton pour revenir à la page de connexion (Stylisé)
-                TextButton(
-                  style: TextButton.styleFrom(
-                    foregroundColor: accentColor, // Couleur bleue pour le texte
-                    padding: const EdgeInsets.symmetric(vertical: 12.0),
-                  ),
-                  onPressed: () {
-                    Navigator.pop(context);
-                  },
-                  child: const Text(
-                    "Déjà membre ? Connexion",
-                    style: TextStyle(fontSize: 16),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }

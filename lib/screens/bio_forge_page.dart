@@ -1,3 +1,4 @@
+// lib/screens/bio_forge_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart'; // Nécessaire pour générer des ID uniques
@@ -22,7 +23,7 @@ import '../services/firestore_service.dart';
 // Un Provider qui regarde la base virale *du joueur actuellement connecté*.
 // Il dépend de authStateChangesProvider (pour l'UID) et utilise streamViralBase.
 // Renvoie un Stream<BaseVirale?>.
-final playerBaseProvider = StreamProvider.autoDispose<BaseVirale?>((ref) {
+final userViralBaseProvider = StreamProvider.autoDispose<BaseVirale?>((ref) { // Renommé de playerBaseProvider pour éviter la confusion avec le passé
   final authState = ref.watch(authStateChangesProvider);
 
   return authState.when(
@@ -49,14 +50,24 @@ const Color hospitalTextColor = Color(0xFF212121); // Texte sombre
 const Color hospitalSubTextColor = Color(0xFF757575); // Texte gris
 const Color hospitalWarningColor = Color(0xFFFF9800); // Orange
 const Color hospitalErrorColor = Color(0xFFF44336); // Rouge
+const Color hospitalSuccessColor = hospitalPrimaryGreen; // Pour les messages de succès
 
-class BioForgePage extends ConsumerWidget {
+
+class BioForgePage extends ConsumerStatefulWidget {
   const BioForgePage({super.key});
+
+  @override
+  ConsumerState<BioForgePage> createState() => _BioForgePageState();
+}
+
+class _BioForgePageState extends ConsumerState<BioForgePage> {
+  final Uuid _uuid = const Uuid(); // Instance de Uuid pour générer des IDs
 
   // Fonction pour retirer un pathogène avec messages SnackBar stylisés
   void _removePathogen(BuildContext context, WidgetRef ref, BaseVirale currentBase, String pathogenIdToRemove) async {
     final currentUser = ref.read(authStateChangesProvider).value;
     if (currentUser == null) {
+      if (!mounted) return; // Vérifie si le widget est toujours monté
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: const Text('Connectez-vous pour modifier votre base.'), backgroundColor: hospitalErrorColor),
       );
@@ -68,93 +79,166 @@ class BioForgePage extends ConsumerWidget {
         .where((pathogene) => pathogene.id != pathogenIdToRemove)
         .toList();
 
-    final updatedBase = BaseVirale(
-      id: currentBase.id,
-      nom: currentBase.nom,
-      createurId: currentBase.createurId,
-      pathogenes: updatedPathogensList,
-    );
+    final updatedBase = currentBase.copyWith(pathogenes: updatedPathogensList); // Utilise copyWith pour une meilleure pratique
 
     final firestoreService = ref.read(firestoreServiceProvider);
 
     try {
       await firestoreService.savePlayerBase(userId: userId, base: updatedBase);
       print('Pathogène $pathogenIdToRemove retiré et base sauvegardée.');
+      if (!mounted) return; // Vérifie si le widget est toujours monté
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: const Text('Pathogène retiré de votre base.'), backgroundColor: hospitalWarningColor), // Utilise warning pour retrait (attention)
       );
     } catch (e) {
       print('Erreur lors du retrait du pathogène ou de la sauvegarde : $e');
+      if (!mounted) return; // Vérifie si le widget est toujours monté
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Erreur lors du retrait : ${e.toString()}'), backgroundColor: hospitalErrorColor), // Rouge erreur
       );
     }
   }
 
-  // Fonction pour ajouter un pathogène avec messages SnackBar stylisés
-  void _addPathogen(BuildContext context, WidgetRef ref, BaseVirale currentBase) async {
+  // Fonction pour ajouter un nouveau pathogène (Virus ou Bactérie) à la base virale
+  Future<void> _addPathogen(BuildContext context, WidgetRef ref, BaseVirale currentBase, String pathogenType) async {
     final currentUser = ref.read(authStateChangesProvider).value;
     if (currentUser == null) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: const Text('Connectez-vous pour ajouter des pathogènes.'), backgroundColor: hospitalErrorColor),
+        SnackBar(content: const Text('Connectez-vous pour forger des pathogènes.'), backgroundColor: hospitalErrorColor),
       );
       return;
     }
     final userId = currentUser.uid;
 
-    // **Créer un nouveau pathogène exemple (Virus simple)**
-    final newPathogen = Virus(
-      id: const Uuid().v4(),
-      pv: 40.0, // Légèrement amélioré
-      maxPv: 40.0,
-      armure: 4.0,
-      typeAttaque: 'neurotoxique', // Nouveau type
-      degats: 8.0,
-      initiative: 10,
-      faiblesses: {'énergétique': 1.5, 'physique': 0.7},
-    );
-
-    final updatedPathogensList = [...currentBase.pathogenes, newPathogen];
-
-    final updatedBase = BaseVirale(
-      id: currentBase.id,
-      nom: currentBase.nom,
-      createurId: currentBase.createurId,
-      pathogenes: updatedPathogensList,
-    );
-
     final firestoreService = ref.read(firestoreServiceProvider);
 
     try {
+      // Pas besoin de récupérer la base ici, elle est passée par currentBase.
+      // Créer un nouveau pathogène basé sur le type choisi
+      final newPathogenId = _uuid.v4();
+      AgentPathogene newPathogen; // Type spécifique pour AgentPathogene
+
+      if (pathogenType == 'Virus') {
+        newPathogen = Virus(
+          id: newPathogenId,
+          pv: 100.0,
+          maxPv: 100.0,
+          armure: 10.0,
+          typeAttaque: 'corrosive',
+          degats: 25.0,
+          initiative: 5,
+          faiblesses: {'physique': 1.5, 'energetique': 0.7},
+        );
+      } else if (pathogenType == 'Bacterie') {
+        newPathogen = Bacterie(
+          id: newPathogenId,
+          pv: 120.0,
+          maxPv: 120.0,
+          armure: 15.0,
+          typeAttaque: 'infectieuse',
+          degats: 20.0,
+          initiative: 4,
+          faiblesses: {'feu': 1.5, 'froid': 0.7},
+        );
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: const Text('Type de pathogène inconnu.'), backgroundColor: hospitalErrorColor),
+        );
+        return;
+      }
+
+      // Ajouter le nouveau pathogène à la liste existante
+      final updatedPathogensList = List<AgentPathogene>.from(currentBase.pathogenes)..add(newPathogen);
+
+      // Utilise copyWith pour créer une nouvelle instance de BaseVirale
+      final updatedBase = currentBase.copyWith(pathogenes: updatedPathogensList);
+
+      // Sauvegarder la base virale mise à jour dans Firestore
       await firestoreService.savePlayerBase(userId: userId, base: updatedBase);
-      print('Nouveau pathogène ${newPathogen.id} (${newPathogen.type}) ajouté.');
+      print('Nouveau pathogène $newPathogenId ($pathogenType) ajouté.');
+
+      if (!mounted) return; // Vérifie si le widget est toujours monté
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Nouveau pathogène "${newPathogen.type}" synthétisé !'), backgroundColor: hospitalPrimaryGreen), // Vert succès
+        SnackBar(content: Text('$pathogenType synthétisé avec succès !'), backgroundColor: hospitalSuccessColor),
       );
     } catch (e) {
       print('Erreur lors de l\'ajout du pathogène ou de la sauvegarde : $e');
+      if (!mounted) return; // Vérifie si le widget est toujours monté
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur lors de la synthèse : ${e.toString()}'), backgroundColor: hospitalErrorColor), // Rouge erreur
+        SnackBar(content: Text('Erreur lors de la synthèse du pathogène : ${e.toString()}'), backgroundColor: hospitalErrorColor),
       );
     }
   }
 
+  // Fonction pour afficher la boîte de dialogue de sélection du type de pathogène
+  void _showPathogenTypeSelectionDialog(BuildContext context, WidgetRef ref, BaseVirale currentBase) {
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          backgroundColor: hospitalCardColor,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          title: Text(
+            'Choisir le Type de Pathogène',
+            style: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: hospitalTextColor),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              ListTile(
+                leading: Icon(Icons.sick_outlined, color: hospitalPrimaryGreen),
+                title: Text('Virus', style: GoogleFonts.roboto(color: hospitalTextColor)),
+                onTap: () {
+                  Navigator.of(dialogContext).pop(); // Ferme la boîte de dialogue
+                  _addPathogen(context, ref, currentBase, 'Virus'); // Passe 'Virus' comme type
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.science_outlined, color: hospitalAccentPink),
+                title: Text('Bactérie', style: GoogleFonts.roboto(color: hospitalTextColor)),
+                onTap: () {
+                  Navigator.of(dialogContext).pop(); // Ferme la boîte de dialogue
+                  _addPathogen(context, ref, currentBase, 'Bacterie'); // Passe 'Bactérie' comme type
+                },
+              ),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+              },
+              child: Text(
+                'Annuler',
+                style: GoogleFonts.roboto(color: hospitalSubTextColor),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final userProfileAsyncValue = ref.watch(userProfileProvider);
-    final playerBaseAsyncValue = ref.watch(playerBaseProvider);
+    final playerBaseAsyncValue = ref.watch(userViralBaseProvider); // Utilise le Provider renommé
 
     return Scaffold(
-      // AppBar thématique claire
       appBar: AppBar(
-        title: Text('Unité de Bio-Synthèse', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold)), // Titre adapté, police propre
-        backgroundColor: hospitalAccentPink, // Rose vif pour cette page
+        title: Text(
+          'Unité de Bio-Synthèse',
+          style: GoogleFonts.poppins(color: hospitalTextColor, fontWeight: FontWeight.bold), // Utilise hospitalTextColor
+        ),
+        backgroundColor: hospitalBackgroundColor, // Utilise hospitalBackgroundColor
         elevation: 1.0,
         centerTitle: true,
-        iconTheme: const IconThemeData(color: Colors.white), // Icônes blanches
+        // iconTheme: const IconThemeData(color: Colors.white), // Plus besoin si AppBar est clair
       ),
-      backgroundColor: hospitalBackgroundColor, // Fond clair
+      backgroundColor: hospitalBackgroundColor,
       body: userProfileAsyncValue.when(
         data: (profileData) {
           if (profileData == null) {
@@ -177,30 +261,27 @@ class BioForgePage extends ConsumerWidget {
             );
           }
 
-          // Accède aux valeurs des providers dérivés si profileData est non-null
           final RessourcesDefensives? userResources = ref.watch(userResourcesProvider);
           final LaboratoireRecherche? userResearch = ref.watch(userResearchProvider);
           final MemoireImmunitaire? userImmuneMemory = ref.watch(userImmuneMemoryProvider);
 
           return SingleChildScrollView(
-            padding: const EdgeInsets.all(20.0), // Padding général
+            padding: const EdgeInsets.all(20.0),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch, // Étirer les éléments
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // --- Titre de la Page ---
                 Text(
-                  'Laboratoire de Culturisme Pathogène', // Nouveau titre style hospitalier/biologique
+                  'Laboratoire de Culturisme Pathogène',
                   textAlign: TextAlign.center,
-                  style: GoogleFonts.montserrat( // Police percutante
+                  style: GoogleFonts.montserrat(
                     fontSize: 26,
                     fontWeight: FontWeight.bold,
-                    color: hospitalAccentPink, // Rose vif
+                    color: hospitalAccentPink,
                   ),
                 ),
                 const SizedBox(height: 30),
 
-                // --- Panneau des Ressources ---
-                _buildInfoPanel( // Widget helper pour les panneaux
+                _buildInfoPanel(
                   title: 'Réserves Biologiques',
                   icon: Icons.inventory_2_outlined,
                   iconColor: hospitalPrimaryGreen,
@@ -208,25 +289,23 @@ class BioForgePage extends ConsumerWidget {
                       ? Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildInfoRow(Icons.bolt, 'Énergie Cellulaire', userResources.energie.toStringAsFixed(1), hospitalAccentPink), // Rose
-                      _buildInfoRow(Icons.science_outlined, 'Bio-matériaux Synthétiques', userResources.bioMateriaux.toStringAsFixed(1), hospitalPrimaryGreen), // Vert
-                      // Ajoute d'autres ressources si besoin
+                      _buildInfoRow(Icons.bolt, 'Énergie Cellulaire', userResources.energie.toStringAsFixed(1), hospitalAccentPink),
+                      _buildInfoRow(Icons.science_outlined, 'Bio-matériaux Synthétiques', userResources.bioMateriaux.toStringAsFixed(1), hospitalPrimaryGreen),
                     ],
                   )
                       : Center(child: Text('Ressources non disponibles.', style: GoogleFonts.roboto(color: hospitalSubTextColor, fontStyle: FontStyle.italic))),
                 ),
                 const SizedBox(height: 20),
 
-                // --- Panneau de la Recherche ---
                 _buildInfoPanel(
                   title: 'Connaissances Virales',
-                  icon: Icons.menu_book_outlined, // Icône livre/connaissance
-                  iconColor: hospitalWarningColor, // Orange
+                  icon: Icons.menu_book_outlined,
+                  iconColor: hospitalWarningColor,
                   content: userResearch != null
                       ? Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildInfoRow(Icons.analytics_outlined, 'Points d\'Analyse', userResearch.pointsRecherche.toStringAsFixed(1), hospitalAccentPink), // Rose
+                      _buildInfoRow(Icons.analytics_outlined, 'Points d\'Analyse', userResearch.pointsRecherche.toStringAsFixed(1), hospitalAccentPink),
                       const SizedBox(height: 10),
                       Text(
                         'Protocoles Débloqués :',
@@ -246,7 +325,7 @@ class BioForgePage extends ConsumerWidget {
                                 children: [
                                   Icon(Icons.check_circle_outline, size: 16, color: hospitalPrimaryGreen),
                                   const SizedBox(width: 6),
-                                  Expanded(child: Text(id, style: GoogleFonts.roboto(fontSize: 15, color: hospitalTextColor), overflow: TextOverflow.ellipsis)), // TODO: Afficher le nom complet si possible
+                                  Expanded(child: Text(id, style: GoogleFonts.roboto(fontSize: 15, color: hospitalTextColor), overflow: TextOverflow.ellipsis)),
                                 ],
                               ),
                             )
@@ -257,16 +336,15 @@ class BioForgePage extends ConsumerWidget {
                 ),
                 const SizedBox(height: 20),
 
-                // --- Panneau de la Mémoire Immunitaire ---
                 _buildInfoPanel(
                   title: 'Banque de Données Immunitaire',
-                  icon: Icons.local_hospital_outlined, // Icône hôpital/santé
-                  iconColor: hospitalPrimaryGreen, // Vert
+                  icon: Icons.local_hospital_outlined,
+                  iconColor: hospitalPrimaryGreen,
                   content: userImmuneMemory != null
                       ? Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildInfoRow(Icons.bug_report_outlined, 'Types Connus', userImmuneMemory.typesConnus.join(', '), hospitalAccentPink), // Rose
+                      _buildInfoRow(Icons.bug_report_outlined, 'Types Connus', userImmuneMemory.typesConnus.join(', '), hospitalAccentPink),
                       const SizedBox(height: 10),
                       Text(
                         'Bonus d\'Efficacité :',
@@ -284,7 +362,7 @@ class BioForgePage extends ConsumerWidget {
                               padding: const EdgeInsets.symmetric(vertical: 2.0),
                               child: Row(
                                 children: [
-                                  Icon(Icons.star_rate_outlined, size: 16, color: hospitalWarningColor), // Icône étoile/bonus
+                                  Icon(Icons.star_rate_outlined, size: 16, color: hospitalWarningColor),
                                   const SizedBox(width: 6),
                                   Expanded(child: Text('${e.key}: ${e.value.toStringAsFixed(1)}', style: GoogleFonts.roboto(fontSize: 15, color: hospitalTextColor), overflow: TextOverflow.ellipsis)),
                                 ],
@@ -298,23 +376,21 @@ class BioForgePage extends ConsumerWidget {
                 const SizedBox(height: 20),
 
 
-                // --- Panneau de Votre Base Virale ---
                 _buildInfoPanel(
                   title: 'Collecte Pathogène',
-                  icon: Icons.folder_special_outlined, // Icône dossier spécial
-                  iconColor: hospitalAccentPink, // Rose vif
+                  icon: Icons.folder_special_outlined,
+                  iconColor: hospitalAccentPink,
                   content: playerBaseAsyncValue.when(
-                    data: (playerBase) {
+                    data: (BaseVirale? playerBase) { // playerBase peut être null
                       if (playerBase == null) {
-                        return Center(child: Text('Aucune base personnelle détectée.', style: GoogleFonts.roboto(color: hospitalSubTextColor, fontStyle: FontStyle.italic)));
-                        // TODO: Ajouter un bouton stylisé pour créer la base
+                        return Center(child: Text('Aucune base personnelle détectée. Créez-en une !', style: GoogleFonts.roboto(color: hospitalSubTextColor, fontStyle: FontStyle.italic)));
                       }
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text('Nom de la Base : ${playerBase.nom ?? 'Base sans nom'}', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: hospitalTextColor)),
                           const SizedBox(height: 8),
-                          const Divider(color: hospitalSubTextColor, height: 15, thickness: 0.3), // Séparateur
+                          const Divider(color: hospitalSubTextColor, height: 15, thickness: 0.3),
                           Text('Pathogènes en culture :', style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 16, color: hospitalTextColor)),
                           const SizedBox(height: 8),
 
@@ -327,66 +403,54 @@ class BioForgePage extends ConsumerWidget {
                               itemCount: playerBase.pathogenes.length,
                               itemBuilder: (context, index) {
                                 final pathogene = playerBase.pathogenes[index];
-                                // Widget helper pour chaque élément de pathogène
                                 return _buildPathogenTile(context, ref, playerBase, pathogene);
                               },
                             ),
 
                           const SizedBox(height: 20),
 
-                          // Bouton Ajouter un Pathogène (Stylisé)
-                          Center( // Centre le bouton
-                            child: ElevatedButton.icon( // Bouton avec icône
+                          Center(
+                            child: ElevatedButton.icon(
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: hospitalPrimaryGreen, // Fond vert
-                                foregroundColor: Colors.white, // Texte blanc
+                                backgroundColor: hospitalPrimaryGreen,
+                                foregroundColor: Colors.white,
                                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
                                 elevation: 3.0,
                               ),
-                              onPressed: () {
-                                print('Tentative d\'ajout d\'un pathogène');
-                                // Appelle la fonction pour ajouter le pathogène
-                                _addPathogen(context, ref, playerBase); // Passer le contexte
-                              },
-                              icon: const Icon(Icons.add_circle_outline), // Icône d'ajout
-                              label: Text('Synthétiser Pathogène', style: GoogleFonts.roboto(fontSize: 16, fontWeight: FontWeight.bold)), // Texte adapté
+                              // Appelle la boîte de dialogue de sélection du type de pathogène
+                              onPressed: playerBase != null // Active le bouton seulement si la base existe
+                                  ? () => _showPathogenTypeSelectionDialog(context, ref, playerBase)
+                                  : null,
+                              icon: const Icon(Icons.add_circle_outline),
+                              label: Text('Synthétiser Pathogène', style: GoogleFonts.roboto(fontSize: 16, fontWeight: FontWeight.bold)),
                             ),
                           )
 
                         ],
                       );
                     },
-                    loading: () => Center(child: CircularProgressIndicator(color: hospitalAccentPink)), // Indicateur rose
-                    error: (err, stack) => Center(child: Text('Erreur de chargement de votre base : ${err.toString()}', style: GoogleFonts.roboto(color: hospitalErrorColor))), // Texte erreur rouge
+                    loading: () => Center(child: CircularProgressIndicator(color: hospitalAccentPink)),
+                    error: (err, stack) => Center(child: Text('Erreur de chargement de votre base : ${err.toString()}', style: GoogleFonts.roboto(color: hospitalErrorColor))),
                   ),
                 ),
-
-
                 const SizedBox(height: 20),
-
-                // TODO: Ajouter d'autres sections de la Bio-Forge
-
               ],
             ),
           );
         },
-        // Gère l'état de chargement global du profil
-        loading: () => Center(child: CircularProgressIndicator(color: hospitalPrimaryGreen, key: const ValueKey('profileLoading'))), // Indicateur vert
-        // Gère l'état d'erreur global du profil
-        error: (err, stack) => Center(child: Text('Erreur de chargement du profil : ${err.toString()}', style: GoogleFonts.roboto(color: hospitalErrorColor))), // Texte erreur rouge
+        loading: () => Center(child: CircularProgressIndicator(color: hospitalPrimaryGreen, key: const ValueKey('profileLoading'))),
+        error: (err, stack) => Center(child: Text('Erreur de chargement du profil : ${err.toString()}', style: GoogleFonts.roboto(color: hospitalErrorColor))),
       ),
     );
   }
 
-  // --- Widgets helper pour le design (adaptés au thème hospitalier) ---
-
-  // Widget générique pour les panneaux d'information (Ressources, Recherche, Mémoire)
+  // Widget générique pour les panneaux d'information
   Widget _buildInfoPanel({required String title, required IconData icon, required Color iconColor, required Widget content}) {
     return Card(
-      color: hospitalCardColor, // Fond blanc
-      elevation: 2.0, // Légère ombre
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)), // Coins légèrement arrondis
+      color: hospitalCardColor,
+      elevation: 2.0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
       child: Padding(
         padding: const EdgeInsets.all(20.0),
         child: Column(
@@ -394,52 +458,52 @@ class BioForgePage extends ConsumerWidget {
           children: [
             Row(
               children: [
-                Icon(icon, size: 28, color: iconColor), // Icône du panneau
+                Icon(icon, size: 28, color: iconColor),
                 const SizedBox(width: 10),
-                Expanded( // Permet au texte de prendre l'espace restant
+                Expanded(
                   child: Text(
-                    title, // Titre du panneau
+                    title,
                     style: GoogleFonts.poppins(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
-                      color: hospitalTextColor, // Texte sombre
+                      color: hospitalTextColor,
                     ),
-                    overflow: TextOverflow.ellipsis, // Gère le débordement
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
             ),
-            const Divider(color: hospitalSubTextColor, height: 25, thickness: 0.5), // Ligne de séparation
-            content, // Le contenu spécifique du panneau
+            const Divider(color: hospitalSubTextColor, height: 25, thickness: 0.5),
+            content,
           ],
         ),
       ),
     );
   }
 
-  // Widget helper pour une ligne d'information dans un panneau (avec icône, label, valeur)
+  // Widget helper pour une ligne d'information dans un panneau
   Widget _buildInfoRow(IconData icon, String label, String value, Color iconColor) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 20, color: iconColor), // Icône de l'item
+          Icon(icon, size: 20, color: iconColor),
           const SizedBox(width: 8),
-          Expanded( // Permet au label de prendre l'espace
-            flex: 2, // Le label prend un peu plus de place
+          Expanded(
+            flex: 2,
             child: Text(
-              '$label :', // Label
-              style: GoogleFonts.roboto(fontSize: 16, color: hospitalSubTextColor), // Police standard, gris moyen
+              '$label :',
+              style: GoogleFonts.roboto(fontSize: 16, color: hospitalSubTextColor),
             ),
           ),
-          Expanded( // Permet à la valeur de prendre l'espace restant
-            flex: 3, // La valeur prend le reste
+          Expanded(
+            flex: 3,
             child: Text(
-              value, // Valeur
-              style: GoogleFonts.montserrat(fontSize: 16, fontWeight: FontWeight.w500, color: hospitalTextColor), // Police pour les valeurs, texte sombre
-              textAlign: TextAlign.right, // Aligne la valeur à droite
-              overflow: TextOverflow.ellipsis, // Gère le débordement
+              value,
+              style: GoogleFonts.montserrat(fontSize: 16, fontWeight: FontWeight.w500, color: hospitalTextColor),
+              textAlign: TextAlign.right,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],
@@ -449,17 +513,17 @@ class BioForgePage extends ConsumerWidget {
 
   // Widget pour une tuile individuelle de pathogène dans la liste
   Widget _buildPathogenTile(BuildContext context, WidgetRef ref, BaseVirale currentBase, AgentPathogene pathogene) {
-    return Card( // Utilise une carte intérieure pour chaque pathogène
-      color: hospitalBackgroundColor, // Fond très clair pour la tuile du pathogène
-      elevation: 1.0, // Très légère ombre
-      margin: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 8.0), // Petite marge
+    return Card(
+      color: hospitalBackgroundColor,
+      elevation: 1.0,
+      margin: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 8.0),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6.0)),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
         child: Row(
           children: [
             // Icône du pathogène (peut-être basée sur le type plus tard)
-            Icon(Icons.bug_report_outlined, size: 28, color: hospitalAccentPink.withOpacity(0.8)), // Icône bug, couleur rose semi-opaque
+            Icon(Icons.bug_report_outlined, size: 28, color: hospitalAccentPink.withOpacity(0.8)),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -478,18 +542,17 @@ class BioForgePage extends ConsumerWidget {
                     style: GoogleFonts.roboto(fontSize: 14, color: hospitalSubTextColor),
                     overflow: TextOverflow.ellipsis,
                   ),
-                  // TODO: Afficher d'autres stats pertinentes
                 ],
               ),
             ),
             const SizedBox(width: 8),
             // Bouton Retirer
             IconButton(
-              icon: const Icon(Icons.delete_outline, color: hospitalErrorColor), // Icône corbeille, rouge
+              icon: const Icon(Icons.delete_outline, color: hospitalErrorColor),
               tooltip: 'Retirer ce pathogène',
               onPressed: () {
                 print('Tentative de retrait du pathogène ${pathogene.id}');
-                _removePathogen(context, ref, currentBase, pathogene.id); // Passe le contexte et ref
+                _removePathogen(context, ref, currentBase, pathogene.id);
               },
             ),
           ],
@@ -497,5 +560,4 @@ class BioForgePage extends ConsumerWidget {
       ),
     );
   }
-
-} // Fin de la classe BioForgePage
+}
